@@ -545,12 +545,18 @@ function setTabActive(which) {
 
 function setMode(which) {
   const prevMode = mode;
-mode = which;
 
-// if user is coming from pano back to dollhouse, request a reset
-if (prevMode === "pano" && which === "dollhouse") {
-  needsDollReset = true;
-}
+  // ✅ If leaving pano while a transition is running, cancel it so UI never gets stuck
+  if (prevMode === "pano" && which !== "pano" && state.isTransitioning) {
+    cancelActivePanoTransition("mode switch away from pano");
+  }
+
+  mode = which;
+
+  // if user is coming from pano back to dollhouse, request a reset
+  if (prevMode === "pano" && which === "dollhouse") {
+    needsDollReset = true;
+  }
   setTabActive(which);
 
   navWrap.classList.toggle("hidden", which !== "pano");
@@ -562,11 +568,11 @@ if (roomLabelEl) roomLabelEl.style.opacity = (which === "pano" ? roomLabelEl.sty
   applyRenderLookForMode(which);
 
   if (which !== "pano") {
-    try {
-      transitionVideo.pause();
-    } catch {}
+  if (state.isTransitioning) cancelActivePanoTransition("leaving pano");
+  else {
+    try { transitionVideo.pause(); } catch {}
   }
-
+}
   resizeRenderer();
 }
 
@@ -757,6 +763,11 @@ function fadeInPano(duration = 450) {
 
 // Jump directly to a pano index (0-based) from node click
 async function jumpToPano(index) {
+  // ✅ If a pano transition is mid-flight, kill it so pano input/UI can't get stuck
+  if (state.isTransitioning) {
+    cancelActivePanoTransition("jumpToPano");
+  }
+
   setMode("pano");
 
   // ✅ IMPORTANT: undo any node-influenced orbit target so it can't poison the return
@@ -1184,11 +1195,22 @@ function seekVideo(timeSec) {
 }
 
 async function playTransition(url, heroTargetIndex) {
+  const myToken = transitionCancelToken;
+
   await loadVideoSrc(url);
+  if (myToken !== transitionCancelToken) return;
+
   await seekVideo(0);
+  if (myToken !== transitionCancelToken) return;
 
   setSphereMap(transitionTex);
-  await transitionVideo.play();
+
+  try {
+    await transitionVideo.play();
+  } catch (e) {
+    console.warn("Transition video play failed:", e);
+    return;
+  }
 
   const dur = transitionVideo.duration || 0;
   const hero = HERO[heroTargetIndex];
@@ -1209,13 +1231,26 @@ async function playTransition(url, heroTargetIndex) {
     });
   }
 
+  // ✅ Critical: resolve not only on "ended", but also on "pause"/"error"
   await new Promise((resolve) => {
-    const done = () => {
-      transitionVideo.removeEventListener("ended", done);
-      resolve();
+    const onEnded = () => cleanup(resolve);
+    const onPaused = () => cleanup(resolve);
+    const onError = () => cleanup(resolve);
+
+    const cleanup = (cb) => {
+      transitionVideo.removeEventListener("ended", onEnded);
+      transitionVideo.removeEventListener("pause", onPaused);
+      transitionVideo.removeEventListener("error", onError);
+      cb();
     };
-    transitionVideo.addEventListener("ended", done);
+
+    transitionVideo.addEventListener("ended", onEnded);
+    transitionVideo.addEventListener("pause", onPaused);
+    transitionVideo.addEventListener("error", onError);
   });
+
+  // cancelled mid-way
+  if (myToken !== transitionCancelToken) return;
 
   transitionVideo.pause();
   await steerPromise;
@@ -1232,6 +1267,28 @@ const state = {
   isTransitioning: false,
   panoTextures: [], // will be sized after PANOS is built
 };
+// -----------------------------
+// Transition cancellation (prevents stuck UI after pause/mode switch)
+// -----------------------------
+let transitionCancelToken = 0;
+
+function cancelActivePanoTransition(reason = "cancel") {
+  transitionCancelToken++;
+  state.isTransitioning = false;
+  autoReorienting = false;
+  setUIEnabled(true);
+
+  // stop video safely
+  try {
+    transitionVideo.pause();
+    transitionVideo.currentTime = 0;
+  } catch {}
+
+  // if a pointer drag started, force-release it
+  isPointerDown = false;
+
+  console.warn("🛑 Cancelled pano transition:", reason);
+}
 
 async function ensurePanoLoaded(i) {
   if (i < 0 || i >= PANOS.length) return null;
@@ -1261,6 +1318,12 @@ async function goTo(targetIndex) {
 
   state.isTransitioning = true;
   setUIEnabled(false);
+  const myToken = transitionCancelToken;
+  const watchdog = setTimeout(() => {
+    if (state.isTransitioning && myToken === transitionCancelToken) {
+      cancelActivePanoTransition("watchdog timeout");
+    }
+  }, 15000);
 
   try {
     await reorientToHero(from, 700);
@@ -1298,7 +1361,8 @@ async function goTo(targetIndex) {
     } catch (e) {
       console.error("Also failed to load pano:", e);
     }
-  } finally {
+    } finally {
+    clearTimeout(watchdog);
     state.isTransitioning = false;
     setUIEnabled(true);
   }
