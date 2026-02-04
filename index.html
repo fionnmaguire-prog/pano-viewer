@@ -19,7 +19,8 @@
         --nav-disabled: rgba(255, 255, 255, 0.35);
       }
 
-      html, body {
+      html,
+      body {
         margin: 0;
         height: 100%;
         overflow: hidden;
@@ -76,6 +77,7 @@
         border-radius: 14px;
         background: rgba(0,0,0,0.45);
         backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255,255,255,0.10);
       }
 
@@ -100,26 +102,59 @@
         top: 14px;
         right: 14px;
         z-index: 20;
+
         display: inline-flex;
         align-items: center;
         gap: 10px;
+
         padding: 10px 12px;
         border-radius: 999px;
+
         background: rgba(0,0,0,0.45);
         backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255,255,255,0.10);
+
         color: rgba(255,255,255,0.92);
         text-decoration: none;
         font-size: 12px;
+        letter-spacing: 0.02em;
+        user-select: none;
       }
 
       #brandLink:hover {
-        background: rgba(0,0,0,0.6);
+        background: rgba(0,0,0,0.60);
       }
 
-      #brandLogo { height: 22px; }
+      #brandLogo {
+        height: 22px;
+        width: auto;
+        display: block;
+      }
+
+      #brandText {
+        line-height: 1;
+        white-space: nowrap;
+      }
+
       #brandText.hidden,
-      #brandLogo.hidden { display: none; }
+      #brandLogo.hidden {
+        display: none;
+      }
+
+      /* Transition video (used for pano transitions) */
+      #transitionVideo {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 5;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+        background: #000;
+      }
 
       /* =============================
          NAVIGATION
@@ -132,12 +167,14 @@
         bottom: var(--ui-safe-bottom);
         transform: translateX(-50%);
         z-index: 12;
+
         padding: 6px 10px;
         border-radius: 999px;
         font-size: 12px;
         color: rgba(255,255,255,0.9);
         background: rgba(0,0,0,0.45);
         backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         letter-spacing: 0.5px;
         user-select: none;
       }
@@ -163,12 +200,11 @@
         gap: 10px;
       }
 
-      /* 🔥 UPDATED BUTTON STYLE */
       #nav button {
         appearance: none;
-        border: 1px solid rgba(255,255,255,0.15);
         cursor: pointer;
 
+        border: 1px solid rgba(255,255,255,0.15);
         height: 52px;
         padding: 0 18px;
         border-radius: 14px;
@@ -191,7 +227,6 @@
           background 120ms ease;
       }
 
-      /* ✨ Hover */
       #nav button:hover:not(:disabled) {
         background: var(--nav-bg-hover);
         transform: translateY(-1px);
@@ -200,7 +235,6 @@
           inset 0 1px 0 rgba(255,255,255,0.08);
       }
 
-      /* 🫳 Active press */
       #nav button:active:not(:disabled) {
         transform: translateY(0);
         box-shadow:
@@ -208,7 +242,6 @@
           inset 0 1px 0 rgba(255,255,255,0.05);
       }
 
-      /* 🚫 Disabled */
       #nav button:disabled {
         color: var(--nav-disabled);
         border-color: rgba(255,255,255,0.08);
@@ -218,7 +251,11 @@
         background: rgba(0,0,0,0.6);
       }
 
-      /* Intro / overlay unchanged */
+      /* =============================
+         BEGIN TOUR OVERLAY
+         (critical: keep button clickable)
+      ============================== */
+
       #startOverlay {
         position: absolute;
         inset: 0;
@@ -227,6 +264,8 @@
         place-items: center;
         background: rgba(0,0,0,0.72);
         backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: opacity 300ms ease;
       }
 
       #startOverlay.hidden {
@@ -234,59 +273,98 @@
         pointer-events: none;
       }
 
-      #startCard { text-align: center; }
+      /* When intro video plays, overlay shouldn't dim the frame */
+      #startOverlay.videoMode {
+        background: transparent;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+
+      /* Ensure button sits above video layer */
+      #startCard {
+        position: relative;
+        z-index: 2;
+        text-align: center;
+      }
+
       #startBtn {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+
         padding: 12px 16px;
         border-radius: 14px;
         font-size: 14px;
         font-weight: 650;
+
         background: rgba(255,255,255,0.92);
         color: rgba(0,0,0,0.9);
-        border: 0;
-        cursor: pointer;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+
         text-transform: uppercase;
       }
 
+      #startBtn:active {
+        transform: translateY(1px);
+      }
+
+      /* Critical: intro video must NOT steal clicks */
       #introVideo {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
+        background: #000;
+
         opacity: 0;
         transition: opacity 220ms ease;
+
+        pointer-events: none; /* ✅ keeps BEGIN TOUR clickable */
+        z-index: 1;           /* behind #startCard (z=2) */
       }
-      #introVideo.show { opacity: 1; }
+      #introVideo.show {
+        opacity: 1;
+      }
     </style>
   </head>
 
   <body>
     <div id="app">
       <div id="tabs">
-        <button id="tabPano" class="tabBtn active">Interior</button>
-        <button id="tabDollhouse" class="tabBtn">Dollhouse</button>
+        <button id="tabPano" class="tabBtn active" type="button">Interior</button>
+        <button id="tabDollhouse" class="tabBtn" type="button">Dollhouse</button>
       </div>
 
-      <a id="brandLink" href="https://rtfmediasolutions.com" target="_blank">
-        <img id="brandLogo" alt="RTF Media Solutions" />
+      <a
+        id="brandLink"
+        href="https://rtfmediasolutions.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Open rtfmediasolutions.com"
+      >
+        <img id="brandLogo" alt="RTF Media Solutions" draggable="false" />
         <span id="brandText" class="hidden">rtfmediasolutions.com</span>
       </a>
 
-      <div id="startOverlay">
+      <!-- Begin Tour Overlay -->
+      <div id="startOverlay" aria-label="Begin tour overlay">
         <div id="startCard">
-          <button id="startBtn">BEGIN TOUR</button>
+          <button id="startBtn" type="button">BEGIN TOUR</button>
         </div>
         <video id="introVideo" playsinline muted></video>
       </div>
 
       <video id="transitionVideo" playsinline muted preload="auto"></video>
 
+      <!-- Indicator bottom-center -->
       <div id="indicator">01 / 21</div>
 
+      <!-- Nav buttons bottom-right -->
       <div id="navWrap">
         <div id="nav">
-          <button id="backBtn">BACK</button>
-          <button id="forwardBtn">NEXT</button>
+          <button id="backBtn" aria-label="Back" type="button">BACK</button>
+          <button id="forwardBtn" aria-label="Next" type="button">NEXT</button>
         </div>
       </div>
     </div>
