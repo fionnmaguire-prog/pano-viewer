@@ -759,6 +759,12 @@ function fadeInPano(duration = 450) {
 async function jumpToPano(index) {
   setMode("pano");
 
+  // ✅ IMPORTANT: undo any node-influenced orbit target so it can't poison the return
+  if (refCenter) {
+    orbit.target.copy(refCenter);
+    orbit.update();
+  }
+
   // ✅ critical: blank immediately so old pano can't flash
   blankPanoSphere();
 
@@ -1508,43 +1514,47 @@ async function ensureBestModelHasNode(panoIndex) {
 // Snap orbit view to a "zoomed in" view around a node.
 // Uses the DEFAULT view direction so it feels consistent.
 function snapOrbitToNode(mesh, distanceFactor = 0.25) {
-  // ✅ This function is only used for the “start close to node” moment.
-  // ✅ It MUST NOT change the orbit pivot. Pivot stays refCenter.
+  // Start-near-node moment:
+  // ✅ DO NOT change pivot away from refCenter
   if (!mesh || !defaultDollView || !refCenter) return;
 
   const nodeWorld = new THREE.Vector3();
   mesh.getWorldPosition(nodeWorld);
 
-  // Use the saved/default view direction (camera offset from pivot), but pivot is refCenter
-  const baseOffset = defaultDollView.camPos.clone().sub(defaultDollView.target);
-  const baseDist = baseOffset.length();
-  if (baseDist < 1e-6) baseOffset.set(1, 0, 0);
-  else baseOffset.normalize();
+  // Camera offset from default view (relative to its saved target)
+  const defaultOffset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+  const defaultRadius = Math.max(0.15, defaultOffset.length());
 
-  const endDist = Math.max(0.15, baseDist * distanceFactor);
+  // Desired radius near the model (a fraction of default radius)
+  const endRadius = Math.max(0.15, defaultRadius * distanceFactor);
 
-  // ✅ Pivot locked
+  // Direction: mostly the default direction, nudged toward the node direction
+  const defaultDir = defaultOffset.clone().normalize();
+
+  const nodeDir = nodeWorld.clone().sub(refCenter);
+  if (nodeDir.lengthSq() > 1e-8) nodeDir.normalize();
+  else nodeDir.copy(defaultDir);
+
+  const dir = defaultDir.clone().lerp(nodeDir, 0.65).normalize();
+
+  // ✅ Hard lock pivot to refCenter
   orbit.target.copy(refCenter);
 
-  // Place camera “near node” but still orbiting around refCenter
-  // We shift the camera toward the node direction, without moving pivot.
-  const toNodeDir = nodeWorld.clone().sub(refCenter);
-  if (toNodeDir.lengthSq() > 1e-8) toNodeDir.normalize();
-
-  // Blend the direction: mostly default direction, slightly toward node
-  const dir = baseOffset.clone().lerp(toNodeDir, 0.65).normalize();
-
-  dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endDist)));
+  // Place camera close-ish, looking toward refCenter (OrbitControls will handle lookAt via update)
+  dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endRadius)));
   dollCamera.zoom = defaultDollView.zoom;
 
- dollCamera.updateProjectionMatrix();
-orbit.target.copy(refCenter); // ✅ hard-lock pivot
-orbit.update();
+  dollCamera.updateProjectionMatrix();
+  orbit.update();
 }
 // When returning from pano -> dollhouse, start "in" on the current pano node,
 // then animate out to the default dollhouse view.
 async function resetDollhouseFromCurrentPano(animated = true) {
   if (!defaultDollView) return;
+  if (refCenter) {
+    orbit.target.copy(refCenter);
+    orbit.update();
+  }
 
   // cancel any in-progress node zoom animation
   nodeZoomToken++;
@@ -1573,7 +1583,7 @@ async function resetDollhouseFromCurrentPano(animated = true) {
 
   // 1) START near the current pano node (zoomed in)
   if (node) {
-    snapOrbitToNode(node, 0.05, 1.0);
+    snapOrbitToNode(node, 0.10);
   } else {
     applyOrbitViewWithLockedPivot(defaultDollView);
   }
@@ -1802,23 +1812,26 @@ function animateToOrbitView(
   v,
   durationMs = 450,
   {
-    rotateYawDelta = 0, // radians (positive/negative)
-    rotateStartAt = 0.0, // 0..1, when rotation begins
-    rotateEndAt = 1.0,   // 0..1, when rotation finishes
+    rotateYawDelta = 0,
+    rotateStartAt = 0.0,
+    rotateEndAt = 1.0,
   } = {}
 ) {
   const startPos = dollCamera.position.clone();
-  const startTarget = orbit.target.clone();
   const startZoom = dollCamera.zoom;
 
-  const endPos = v.camPos.clone();
-  const endTarget = v.target.clone();
+  // ✅ Pivot is always refCenter (when available)
+  const pivot = refCenter ? refCenter.clone() : orbit.target.clone();
+
+  // Convert the saved view into an offset-from-pivot target view
+  const savedTarget = v.target.clone();
+  const savedOffset = v.camPos.clone().sub(savedTarget);
+
+  const endPos = pivot.clone().add(savedOffset);
   const endZoom = v.zoom;
 
-  // We'll rotate around the *moving* target, so we compute theta relative to target
-  const startTheta = getOrbitThetaAroundTarget(startTarget);
-
-  // Apply your pano look delta (scaled/signed)
+  // Theta around pivot
+  const startTheta = getOrbitThetaAroundTarget(pivot);
   const endTheta = startTheta + rotateYawDelta;
 
   const start = performance.now();
@@ -1827,26 +1840,22 @@ function animateToOrbitView(
     function tick() {
       const uRaw = (performance.now() - start) / durationMs;
       const u = Math.min(1, Math.max(0, uRaw));
-      const e = u * u * (3 - 2 * u); // smoothstep
+      const e = u * u * (3 - 2 * u);
 
-      // Lerp target/zoom first
-      // ✅ Keep orbit pivot locked during animations
-if (refCenter) orbit.target.copy(refCenter);
-else orbit.target.lerpVectors(startTarget, endTarget, e);
+      // ✅ Hard lock pivot every frame
+      orbit.target.copy(pivot);
+
       dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
-
-      // Lerp camera position between startPos/endPos
       dollCamera.position.lerpVectors(startPos, endPos, e);
 
-      // ✅ Now rotate camera around the *current* target, gradually
+      // Optional yaw rotation during the move (also around pivot)
       if (rotateYawDelta !== 0) {
         const w = Math.max(1e-6, rotateEndAt - rotateStartAt);
         const rt = Math.min(1, Math.max(0, (u - rotateStartAt) / w));
-        const re = rt * rt * (3 - 2 * rt); // smoothstep
-        const thetaNow = startTheta + (endTheta - startTheta) * re;
+        const re = rt * rt * (3 - 2 * rt);
 
-        // rotate around current orbit.target (not startTarget)
-        setOrbitThetaAroundTarget(orbit.target, thetaNow);
+        const thetaNow = startTheta + (endTheta - startTheta) * re;
+        setOrbitThetaAroundTarget(pivot, thetaNow);
       }
 
       dollCamera.updateProjectionMatrix();
@@ -1858,7 +1867,6 @@ else orbit.target.lerpVectors(startTarget, endTarget, e);
     requestAnimationFrame(tick);
   });
 }
-
 async function resetDollhouseView(animated = true) {
   if (!defaultDollView) return;
 
