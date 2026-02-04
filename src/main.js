@@ -1537,8 +1537,9 @@ function snapOrbitToNode(mesh, distanceFactor = 0.25) {
   dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endDist)));
   dollCamera.zoom = defaultDollView.zoom;
 
-  dollCamera.updateProjectionMatrix();
-  orbit.update();
+ dollCamera.updateProjectionMatrix();
+orbit.target.copy(refCenter); // ✅ hard-lock pivot
+orbit.update();
 }
 // When returning from pano -> dollhouse, start "in" on the current pano node,
 // then animate out to the default dollhouse view.
@@ -1929,13 +1930,46 @@ tabDollhouse.addEventListener("click", async () => {
 // If returning from pano, let the reset pick the correct up/down model FIRST
 if (needsDollReset) {
   needsDollReset = false;
-  if (!defaultDollView) defaultDollView = loadSavedDefaultDollView() || saveOrbitView();
 
-  // ✅ switch models + snap-to-node + zoom-out
+  // ✅ 1) Ensure we have a REAL default view (never "saveOrbitView()" as the first default)
+  if (!defaultDollView) {
+    // Try localStorage first
+    const saved = loadSavedDefaultDollView();
+    if (saved) {
+      defaultDollView = saved;
+    } else {
+      // No saved default yet → create one by framing the FULL model
+      await loadDollModel("full").catch(() => {});
+      const fullEntry = dollCache.get("full");
+
+      if (fullEntry?.root) {
+        frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
+        applyReferenceClippingAndLimits();
+
+        defaultDollView = saveOrbitView();
+        framedOnce = true;
+
+        // Only auto-save if admin mode (prevents visitors writing)
+        if (isAdminMode()) {
+          try {
+            localStorage.setItem(
+              DOLL_DEFAULT_VIEW_STORAGE_KEY,
+              JSON.stringify(serializeOrbitView(defaultDollView))
+            );
+          } catch {}
+        }
+      } else {
+        // Fallback (shouldn't happen): at least lock to refCenter
+        defaultDollView = saveOrbitView();
+      }
+    }
+  }
+
+  // ✅ 2) Now do the proper return animation (model switching + snap-to-node + zoom-out)
   const resetPromise = resetDollhouseFromCurrentPano(true);
-await fadeOverlayTo(0, 150);
-await resetPromise;
-return; // stop here so you don't immediately load activeDollKey below
+  await fadeOverlayTo(0, 150);
+  await resetPromise;
+  return; // stop here so you don't immediately load activeDollKey below
 }
 
 // Otherwise load whatever the user last selected
