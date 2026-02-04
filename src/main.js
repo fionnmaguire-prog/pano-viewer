@@ -832,7 +832,7 @@ async function jumpToPano(index) {
 }
 
 // -----------------------------
-// Preload assets for smooth start
+// Preload assets for smooth start (race-safe + no black-screen)
 // -----------------------------
 
 // Prevent accidental double-preload (HMR / repeated clicks)
@@ -847,60 +847,75 @@ async function preloadStartAssets() {
   __preloadStartAssetsPromise = (async () => {
     // 1) Required: first pano
     await ensurePanoLoaded(0);
-
-    // Yield so intro/UI stays responsive
     await yieldToBrowser(0);
 
-    // 2) Priority: DOWN dollhouse first (since it's your first shown model)
-    //    Don't await FULL/UP yet — let DOWN win the race.
+    // 2) Priority: DOWN dollhouse first (so first Dollhouse click is fast)
     const downPromise = loadDollModel("down")
-      .then(async () => {
-        // Mark ready flag (Step 2C uses this)
-        
-
-        // Make sure reference center exists (FULL model loads once; cached after)
+      .then(async (downRoot) => {
+        // Ensure reference center exists (may load FULL once)
         await ensureReferenceReady();
 
-        // Optional: force a single render to compile shaders early.
-const prevMode = mode;
-const prevBg = dollScene.background;
+        // ✅ Shader compile warmup:
+        // Render ONE frame in dollhouse scene WITHOUT disturbing mode/state,
+        // and WITHOUT removing any root that the app might have activated.
+        const prevBg = dollScene.background;
+        const prevAutoClear = renderer.autoClear;
 
-try {
-  dollScene.background = new THREE.Color(0x000000);
+        try {
+          // Force a deterministic clear (prevents “half frame then black” weirdness on some loads)
+          renderer.autoClear = true;
+          dollScene.background = new THREE.Color(0x000000);
 
-  const downRoot = dollCache.get("down")?.root;
-  if (downRoot) {
-    // Temporarily add downRoot (do not change activeDollRoot)
-    dollScene.add(downRoot);
+          if (downRoot) {
+            // Borrow only if it isn't already in a scene
+            let addedByPreload = false;
 
-    renderer.render(dollScene, dollCamera);
+            if (!downRoot.parent) {
+              dollScene.add(downRoot);
+              addedByPreload = true;
+            }
 
-    dollScene.remove(downRoot);
-  }
-} catch (e) {
-  console.warn("Preload shader-compile render skipped:", e);
-} finally {
-  dollScene.background = prevBg;
-  mode = prevMode;
-}
+            // IMPORTANT: render using dollScene/dollCamera, but do NOT touch `mode`
+            renderer.render(dollScene, dollCamera);
 
-        // If FULL was needed for reference, it's now likely ready too
-        dollhouseReady.ref = true;
+            // Remove only if preload added it AND it did not become the active root
+            if (
+              addedByPreload &&
+              downRoot !== activeDollRoot &&
+              downRoot.parent === dollScene
+            ) {
+              dollScene.remove(downRoot);
+            }
+          }
+
+          // Mark readiness (down model loaded successfully)
+          dollhouseReady.down = true;
+          dollhouseReady.ref = true;
+        } catch (e) {
+          console.warn("Preload shader-compile render skipped:", e);
+        } finally {
+          renderer.autoClear = prevAutoClear;
+          dollScene.background = prevBg;
+        }
       })
       .catch((e) => {
         console.warn("Preload: DOWN dollhouse failed:", e);
       });
 
-    // Yield again
     await yieldToBrowser(0);
 
     // 3) Secondary: FULL + UP in background (don’t block)
     loadDollModel("full")
-      .then(() => { dollhouseReady.full = true; })
+      .then(() => {
+        dollhouseReady.full = true;
+        dollhouseReady.ref = true;
+      })
       .catch(() => {});
 
     loadDollModel("up")
-      .then(() => { dollhouseReady.up = true; })
+      .then(() => {
+        dollhouseReady.up = true;
+      })
       .catch(() => {});
 
     // 4) Optional: pano 1 preload
@@ -2237,116 +2252,149 @@ if (btnFull) btnFull.addEventListener("click", () => switchDollhouseModel("full"
 if (btnUp) btnUp.addEventListener("click", () => switchDollhouseModel("up"));
 if (btnDown) btnDown.addEventListener("click", () => switchDollhouseModel("down"));
 
+// -----------------------------
+// Dollhouse tab click (race-safe + fade-safe)
+// -----------------------------
+let dollhouseEnterToken = 0;
+
 tabDollhouse.addEventListener("click", async () => {
-  const comingFromPano = (mode === "pano"); // capture before switching
+  dollhouseEnterToken++;
+  const token = dollhouseEnterToken;
 
-  // If we are leaving pano, fade to black first (like your zoom-in feel)
-  if (comingFromPano) {
-    await fadeOverlayTo(1, 100);
-  }
+  const stillValid = () => token === dollhouseEnterToken;
 
-  // Now switch mode
-  setMode("dollhouse");
+  const comingFromPano = (mode === "pano");
 
   try {
+    // 1) Fade to black first (only if leaving pano)
+    if (comingFromPano) {
+      await fadeOverlayTo(1, 100);
+      if (!stillValid()) return;
+    }
+
+    // 2) Switch mode
+    setMode("dollhouse");
+
+    // 3) HARD guarantee: even if fadeOverlayTo got cancelled mid-flight,
+    //    we are definitely black while loading.
+    fadeOverlay.style.opacity = "1";
+    if (!stillValid()) return;
+
     setDollButtonsActive(activeDollKey);
 
+    // 4) Ensure reference is ready (bounds, refCenter, limits)
     await ensureReferenceReady();
+    if (!stillValid()) return;
 
-// If returning from pano, let the reset pick the correct up/down model FIRST
-if (needsDollReset) {
-  needsDollReset = false;
+    // 5) If returning from pano, let reset pick correct model first
+    if (needsDollReset) {
+      needsDollReset = false;
 
-  // ✅ 1) Ensure we have a REAL default view (never "saveOrbitView()" as the first default)
-  if (!defaultDollView) {
-    // Try localStorage first
-    const saved = loadSavedDefaultDollView();
-    if (saved) {
-      defaultDollView = saved;
-    } else {
-      // No saved default yet → create one by framing the FULL model
-      await loadDollModel("full").catch(() => {});
-      const fullEntry = dollCache.get("full");
+      // Ensure we have a real default view
+      if (!defaultDollView) {
+        const saved = loadSavedDefaultDollView();
+        if (saved) {
+          defaultDollView = saved;
+        } else {
+          await loadDollModel("full").catch(() => {});
+          const fullEntry = dollCache.get("full");
 
-      if (fullEntry?.root) {
-        frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
-        applyReferenceClippingAndLimits();
+          if (fullEntry?.root) {
+            frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
+            applyReferenceClippingAndLimits();
 
-        defaultDollView = saveOrbitView();
-        framedOnce = true;
+            defaultDollView = saveOrbitView();
+            framedOnce = true;
 
-        // Only auto-save if admin mode (prevents visitors writing)
-        if (isAdminMode()) {
-          try {
-            localStorage.setItem(
-              DOLL_DEFAULT_VIEW_STORAGE_KEY,
-              JSON.stringify(serializeOrbitView(defaultDollView))
-            );
-          } catch {}
+            if (isAdminMode()) {
+              try {
+                localStorage.setItem(
+                  DOLL_DEFAULT_VIEW_STORAGE_KEY,
+                  JSON.stringify(serializeOrbitView(defaultDollView))
+                );
+              } catch {}
+            }
+          } else {
+            defaultDollView = saveOrbitView();
+          }
         }
+      }
+
+      // Start reset animation (this may switch models internally)
+      const resetPromise = resetDollhouseFromCurrentPano(true);
+
+      // Reveal immediately so user sees *something* while the reset anim runs
+      fadeOverlay.style.opacity = "0";
+      await fadeOverlayTo(0, 150);
+      if (!stillValid()) return;
+
+      await resetPromise;
+      if (!stillValid()) return;
+
+      // Final hard guarantee (never stuck black)
+      fadeOverlay.style.opacity = "0";
+      return;
+    }
+
+    // 6) Otherwise load whatever the user last selected
+    setDollButtonsActive(activeDollKey);
+
+    const root = await loadDollModel(activeDollKey);
+    if (!stillValid()) return;
+
+    alignModelToReference(activeDollKey);
+    setActiveDollRoot(root);
+
+    // 7) First-time entry: establish default view
+    if (!framedOnce) {
+      framedOnce = true;
+
+      await loadDollModel("full").catch(() => {});
+      if (!stillValid()) return;
+
+      if (defaultDollView) {
+        applyOrbitViewWithLockedPivot(defaultDollView);
+        applyReferenceClippingAndLimits();
       } else {
-        // Fallback (shouldn't happen): at least lock to refCenter
-        defaultDollView = saveOrbitView();
+        const saved = loadSavedDefaultDollView();
+        if (saved) {
+          defaultDollView = saved;
+          applyOrbitViewWithLockedPivot(defaultDollView);
+          applyReferenceClippingAndLimits();
+        } else {
+          frameCameraToObject(dollCamera, orbit, dollCache.get("full").root, 0.7);
+          applyReferenceClippingAndLimits();
+
+          defaultDollView = saveOrbitView();
+
+          if (isAdminMode()) {
+            try {
+              localStorage.setItem(
+                DOLL_DEFAULT_VIEW_STORAGE_KEY,
+                JSON.stringify(serializeOrbitView(defaultDollView))
+              );
+            } catch {}
+          }
+        }
       }
     }
-  }
 
-  // ✅ 2) Now do the proper return animation (model switching + snap-to-node + zoom-out)
-  const resetPromise = resetDollhouseFromCurrentPano(true);
-  await fadeOverlayTo(0, 150);
-  await resetPromise;
-  return; // stop here so you don't immediately load activeDollKey below
-}
-
-// Otherwise load whatever the user last selected
-setDollButtonsActive(activeDollKey);
-const root = await loadDollModel(activeDollKey);
-alignModelToReference(activeDollKey);
-setActiveDollRoot(root);
-
-// First-time entry to dollhouse: use saved default if it exists; otherwise frame and create one
-if (!framedOnce) {
-  framedOnce = true;
-
-  // Make sure FULL exists (used for framing reference and consistent bounds)
-  await loadDollModel("full").catch(() => {});
-
-  // ✅ 1) If tour.json provided a default, use it (do NOT override)
-  if (defaultDollView) {
-    applyOrbitViewWithLockedPivot(defaultDollView);
-    applyReferenceClippingAndLimits();
-  } else {
-    // ✅ 2) Otherwise use saved localStorage (dev/admin workflow)
-    const saved = loadSavedDefaultDollView();
-    if (saved) {
-      defaultDollView = saved;
-      applyOrbitViewWithLockedPivot(defaultDollView);
-      applyReferenceClippingAndLimits();
-    } else {
-      // ✅ 3) Otherwise compute one by framing and set as default
-      frameCameraToObject(dollCamera, orbit, dollCache.get("full").root, 0.7);
-      applyReferenceClippingAndLimits();
-
-      defaultDollView = saveOrbitView();
-
-      // ✅ Only auto-save if admin mode (prevents visitors writing to localStorage)
-      if (isAdminMode()) {
-        try {
-          localStorage.setItem(
-            DOLL_DEFAULT_VIEW_STORAGE_KEY,
-            JSON.stringify(serializeOrbitView(defaultDollView))
-          );
-        } catch {}
-      }
-    }
-  }
-}
+    // 8) Fade back in
+    fadeOverlay.style.opacity = "0";
     await fadeOverlayTo(0, 150);
+
+    // Final hard guarantee
+    fadeOverlay.style.opacity = "0";
   } catch (e) {
     console.error("Failed to load dollhouse GLB:", e);
+
+    // Never leave user on a black overlay if something errors
+    try {
+      fadeOverlay.style.opacity = "0";
+      await fadeOverlayTo(0, 120);
+    } catch {}
   }
 });
-
 // -----------------------------
 // Init
 // -----------------------------
