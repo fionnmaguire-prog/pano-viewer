@@ -535,59 +535,92 @@ function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
 }
 
 // -----------------------------
-// Mode switching
+// Mode switching (robust + transition-safe)
 // -----------------------------
 let mode = "pano"; // "pano" | "dollhouse"
+
 function setTabActive(which) {
   tabPano.classList.toggle("active", which === "pano");
   tabDollhouse.classList.toggle("active", which === "dollhouse");
 }
 
+// Centralized UI restore when entering pano (prevents “dead pano” after heavy usage)
+function ensurePanoUIActive() {
+  // restore nav + buttons
+  setUIEnabled(true);
+  navWrap.classList.remove("hidden");
+
+  // ensure pano input state is sane
+  isPointerDown = false;
+  autoReorienting = false;
+  state.isTransitioning = false;
+
+  // stop any transition video that might still be “owning” the sphere map
+  try { transitionVideo.pause(); } catch {}
+}
+
 function setMode(which) {
   const prevMode = mode;
+  const leavingPano = (prevMode === "pano" && which !== "pano");
 
-  // ✅ If leaving pano while a transition is running, cancel it so UI never gets stuck
-  if (prevMode === "pano" && which !== "pano" && state.isTransitioning) {
-    cancelActivePanoTransition("mode switch away from pano");
+  // ✅ If leaving pano while a transition is running, cancel it FIRST (prevents stuck UI)
+  if (leavingPano && state.isTransitioning) {
+    cancelActivePanoTransition("setMode leaving pano");
   }
 
   mode = which;
 
-  // if user is coming from pano back to dollhouse, request a reset
+  // ✅ If user is coming from pano -> dollhouse, request reset animation
   if (prevMode === "pano" && which === "dollhouse") {
     needsDollReset = true;
   }
+
   setTabActive(which);
 
+  // UI visibility
   navWrap.classList.toggle("hidden", which !== "pano");
-if (roomLabelEl) roomLabelEl.style.opacity = (which === "pano" ? roomLabelEl.style.opacity : "0");
+  if (roomLabelEl) roomLabelEl.style.opacity = (which === "pano" ? roomLabelEl.style.opacity : "0");
   if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
 
-  orbit.enabled = which === "dollhouse";
+  // Controls
+  orbit.enabled = (which === "dollhouse");
 
+  // Render look
   applyRenderLookForMode(which);
 
+  // If we're not in pano, ensure transition video cannot keep “driving” things
   if (which !== "pano") {
-  if (state.isTransitioning) cancelActivePanoTransition("leaving pano");
-  else {
     try { transitionVideo.pause(); } catch {}
+  } else {
+    // ✅ entering pano: make sure UI is alive
+    ensurePanoUIActive();
   }
-}
+
   resizeRenderer();
 }
 
 tabPano.addEventListener("click", async () => {
-  setMode("pano");
-setRoomLabel(state.index); // ✅ restore pano label immediately when returning
+  // If user clicks Pano while a transition is running, cancel it and recover cleanly
+  if (state.isTransitioning) {
+    cancelActivePanoTransition("tabPano click during transition");
+  }
 
+  setMode("pano");
+  setRoomLabel(state.index); // ✅ restore pano label immediately when returning
+
+  // Ensure pano texture is shown (and not left as a video texture / blank)
   blankPanoSphere();
 
-  const tex = await ensurePanoLoaded(state.index);
-  setSphereMap(tex);
-
-  requestAnimationFrame(() => fadeInPano(220));
+  try {
+    const tex = await ensurePanoLoaded(state.index);
+    setSphereMap(tex);
+    requestAnimationFrame(() => fadeInPano(220));
+  } catch (e) {
+    console.warn("tabPano: failed to reload pano texture:", e);
+    // Still ensure UI stays usable
+    ensurePanoUIActive();
+  }
 });
-
 // -----------------------------
 // Pano camera yaw/pitch
 // -----------------------------
@@ -1304,9 +1337,36 @@ function preloadNearby(i) {
 }
 
 // -----------------------------
-// Navigation (pano)
+// Navigation (pano) - robust + cancellable
 // -----------------------------
+
+// Must exist globally (near your other globals is fine)
+let transitionCancelToken = 0;
+
+// Call this when leaving pano mid-transition (e.g. switching to dollhouse)
+function cancelActivePanoTransition(reason = "cancel") {
+  transitionCancelToken++;
+  console.warn("🛑 cancelActivePanoTransition:", reason);
+
+  // stop transition video immediately
+  try { transitionVideo.pause(); } catch {}
+  try { transitionVideo.removeAttribute("src"); transitionVideo.load(); } catch {}
+
+  // restore input / UI safety
+  state.isTransitioning = false;
+  autoReorienting = false;
+  isPointerDown = false;
+
+  // Only show nav if we are actually in pano
+  if (mode === "pano") setUIEnabled(true);
+}
+
+// Optional but recommended: if the user clicks Dollhouse mid transition, cancel pano transition
+// Put this inside setMode() where you switch mode (pano -> dollhouse)
+// if (prevMode === "pano" && which === "dollhouse") cancelActivePanoTransition("mode switch to dollhouse");
+
 async function goTo(targetIndex) {
+  // Hard guards
   if (mode !== "pano") return;
   if (state.isTransitioning) return;
   if (targetIndex === state.index) return;
@@ -1316,9 +1376,17 @@ async function goTo(targetIndex) {
   const from = state.index;
   const to = targetIndex;
 
+  // Start a new “transition session”
+  const myToken = ++transitionCancelToken;
+
+  const stillValid = () =>
+    myToken === transitionCancelToken &&
+    mode === "pano";
+
   state.isTransitioning = true;
   setUIEnabled(false);
-  const myToken = transitionCancelToken;
+
+  // Watchdog: if something hangs, force-recover
   const watchdog = setTimeout(() => {
     if (state.isTransitioning && myToken === transitionCancelToken) {
       cancelActivePanoTransition("watchdog timeout");
@@ -1326,51 +1394,81 @@ async function goTo(targetIndex) {
   }, 15000);
 
   try {
-    await reorientToHero(from, 700);
+    // If user left pano instantly, abort
+    if (!stillValid()) return;
 
+    // Reorient to current hero
+    await reorientToHero(from, 700);
+    if (!stillValid()) return;
+
+    // Begin loading next pano in parallel
     const nextTexPromise = ensurePanoLoaded(to);
 
+    // Play transition video (forward/reverse)
     if (to === from + 1) {
       await playTransition(transitionPathForward(from), to);
     } else {
       await playTransition(transitionPathReverse(from), to);
     }
+    if (!stillValid()) return;
 
+    // Apply next pano texture
     const nextTex = await nextTexPromise;
+    if (!stillValid()) return;
+
     setSphereMap(nextTex);
 
+    // Commit state
     state.index = to;
     updateIndicator(state.index);
     preloadNearby(state.index);
 
+    // Small final reorient
     await reorientToHero(to, 150);
+    if (!stillValid()) return;
 
     targetYaw = yaw;
     targetPitch = pitch;
   } catch (err) {
     console.error("Transition failed:", err);
+
+    // If we were cancelled, don’t try to recover to 'to'
+    if (!stillValid()) return;
+
+    // Fallback: try hard swap to destination pano
     try {
       const tex = await ensurePanoLoaded(to);
+      if (!stillValid()) return;
+
       setSphereMap(tex);
       state.index = to;
       updateIndicator(state.index);
       preloadNearby(state.index);
+
       await reorientToHero(to, 200);
+      if (!stillValid()) return;
+
       targetYaw = yaw;
       targetPitch = pitch;
     } catch (e) {
       console.error("Also failed to load pano:", e);
     }
-    } finally {
+  } finally {
     clearTimeout(watchdog);
-    state.isTransitioning = false;
-    setUIEnabled(true);
+
+    // Only the current token session should restore UI
+    if (myToken === transitionCancelToken) {
+      state.isTransitioning = false;
+      autoReorienting = false;
+      isPointerDown = false;
+
+      if (mode === "pano") setUIEnabled(true);
+    }
   }
 }
 
 forwardBtn.addEventListener("click", () => goTo(state.index + 1));
 backBtn.addEventListener("click", () => goTo(state.index - 1));
-
 // -----------------------------
 // Hotkey helpers
 // -----------------------------
@@ -1516,6 +1614,7 @@ const FULL_SPIN_RAD = Math.PI * 2;                      // 360°
 const FULL_SPIN_SIGN = 1;                               // flip to -1 if you want opposite direction
 const RETURN_ROTATE_MS_NORMAL = 1400; // normal return (when user rotated in pano)
 const RETURN_ROTATE_MS_FULLSPIN = 2600; // slower, only for no-input 360 spin
+const DOLL_RESET_MS = 1400;
 
 function getPanoLookDeltaForIndex(i) {
   const heroYaw = HERO[i]?.yaw ?? 0;
