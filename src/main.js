@@ -834,46 +834,92 @@ async function jumpToPano(index) {
 // -----------------------------
 // Preload assets for smooth start
 // -----------------------------
+
+// Prevent accidental double-preload (HMR / repeated clicks)
+let __preloadStartAssetsPromise = null;
+
+// Tiny yield helper (lets browser breathe between heavy tasks)
+const yieldToBrowser = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
 async function preloadStartAssets() {
-  // Preload pano 0 (required)
-  await ensurePanoLoaded(0);
-// Preload dollhouse GLBs in background (so first Dollhouse click is instant)
-loadDollModel("down")
-  .then((root) => {
-    ensureReferenceReady().then(() => {
-      // render one frame offscreen-ish to force shader compile
-      const prevMode = mode;
-      const prevBg = dollScene.background;
-      dollScene.background = new THREE.Color(0x000000);
+  if (__preloadStartAssetsPromise) return __preloadStartAssetsPromise;
 
-      // render once
-      renderer.render(dollScene, dollCamera);
+  __preloadStartAssetsPromise = (async () => {
+    // 1) Required: first pano
+    await ensurePanoLoaded(0);
 
-      dollScene.background = prevBg;
-      mode = prevMode;
-    });
-  })
-  .catch(() => {});
-loadDollModel("full").catch(() => {});
-loadDollModel("up").catch(() => {});
+    // Yield so intro/UI stays responsive
+    await yieldToBrowser(0);
 
+    // 2) Priority: DOWN dollhouse first (since it's your first shown model)
+    //    Don't await FULL/UP yet — let DOWN win the race.
+    const downPromise = loadDollModel("down")
+      .then(async () => {
+        // Mark ready flag (Step 2C uses this)
+        
 
-  // Kick off pano 1 in background (optional)
-  ensurePanoLoaded(1).catch(() => {});
+        // Make sure reference center exists (FULL model loads once; cached after)
+        await ensureReferenceReady();
 
-  // Preload first forward transition metadata (01->02)
-  if (PANOS.length > 1) {
-    try {
-      await loadVideoSrc(transitionPathForward(0));
-    } catch (e) {
-      console.warn("Could not preload first transition:", e);
-    }
+        // Optional: force a single render to compile shaders early.
+const prevMode = mode;
+const prevBg = dollScene.background;
+
+try {
+  dollScene.background = new THREE.Color(0x000000);
+
+  const downRoot = dollCache.get("down")?.root;
+  if (downRoot) {
+    // Temporarily add downRoot (do not change activeDollRoot)
+    dollScene.add(downRoot);
+
+    renderer.render(dollScene, dollCamera);
+
+    dollScene.remove(downRoot);
   }
-
-  // Tiny delay so main thread breathes (optional)
-  await new Promise((r) => setTimeout(r, 80));
+} catch (e) {
+  console.warn("Preload shader-compile render skipped:", e);
+} finally {
+  dollScene.background = prevBg;
+  mode = prevMode;
 }
 
+        // If FULL was needed for reference, it's now likely ready too
+        dollhouseReady.ref = true;
+      })
+      .catch((e) => {
+        console.warn("Preload: DOWN dollhouse failed:", e);
+      });
+
+    // Yield again
+    await yieldToBrowser(0);
+
+    // 3) Secondary: FULL + UP in background (don’t block)
+    loadDollModel("full")
+      .then(() => { dollhouseReady.full = true; })
+      .catch(() => {});
+
+    loadDollModel("up")
+      .then(() => { dollhouseReady.up = true; })
+      .catch(() => {});
+
+    // 4) Optional: pano 1 preload
+    ensurePanoLoaded(1).catch(() => {});
+
+    // 5) Optional: transition metadata
+    if (PANOS.length > 1) {
+      loadVideoSrc(transitionPathForward(0)).catch(() => {});
+    }
+
+    // Wait for DOWN attempt to finish (so "instant dollhouse" is most likely)
+    await downPromise;
+
+    // Tiny delay so main thread breathes after parsing
+    await yieldToBrowser(50);
+  })();
+
+  return __preloadStartAssetsPromise;
+}
 // -----------------------------
 // Loading helpers
 // -----------------------------
@@ -1563,6 +1609,15 @@ const gltfLoader = new GLTFLoader();
 const dollCache = new Map(); // key -> { root, center, size, alignedOnce, nodes }
 let activeDollKey = "full";
 let activeDollRoot = null;
+// -----------------------------
+// Dollhouse readiness flags (Step 2C)
+// -----------------------------
+const dollhouseReady = {
+  down: false,
+  up: false,
+  full: false,
+  ref: false, // reference center computed (full loaded + bounds done)
+};
 
 let refCenter = null; // Vector3 from FULL model
 let refDistance = null;
@@ -1932,7 +1987,12 @@ async function loadDollModel(key) {
 
         dollCache.set(key, { root, center, size, alignedOnce: false, nodes });
 
-        resolve(root);
+// Step 2C: mark whichever model finished
+if (key === "down") dollhouseReady.down = true;
+if (key === "up") dollhouseReady.up = true;
+if (key === "full") dollhouseReady.full = true;
+
+resolve(root);
       },
       undefined,
       (err) => reject(err)
@@ -1949,6 +2009,7 @@ async function ensureReferenceReady() {
   refCenter = info.center.clone();
   refDistance = computeRefDistanceFromBounds(info.size);
   refReady = true;
+dollhouseReady.ref = true;
 
   orbit.target.copy(refCenter);
   applyReferenceClippingAndLimits();
@@ -1962,10 +2023,20 @@ if (defaultDollView) {
 }
 
 function setActiveDollRoot(root) {
+  // remove previous
   if (activeDollRoot) {
     dollScene.remove(activeDollRoot);
   }
 
+  // if root is invalid, just clear active + node meshes and bail
+  if (!root) {
+    activeDollRoot = null;
+    activeNodeMeshes = [];
+    renderer.domElement.style.cursor = orbit.enabled ? "grab" : "default";
+    return;
+  }
+
+  // set + add
   activeDollRoot = root;
   dollScene.add(activeDollRoot);
 
@@ -1982,7 +2053,6 @@ function setActiveDollRoot(root) {
 
   renderer.domElement.style.cursor = orbit.enabled ? "grab" : "default";
 }
-
 function saveOrbitView() {
   return {
     camPos: dollCamera.position.clone(),
@@ -2351,66 +2421,59 @@ blankPanoSphere();
 if (startBtn) {
   startBtn.disabled = false;
 
-startBtn.addEventListener(
-  "click",
-  async () => {
-    startBtn.disabled = true;
+startBtn.addEventListener("click", async () => {
+  startBtn.disabled = true;
 
-    // Start the top-right brand swap: logo -> domain after 10 seconds
-    startBrandSwapTimer(10000);
-    // ✅ Hide ONLY the UI card so it doesn't cover the video
-    if (startCard) startCard.classList.add("hidden");
+  startBrandSwapTimer(10000);
+  if (startCard) startCard.classList.add("hidden");
+  if (startOverlay) startOverlay.classList.add("videoMode");
 
-    // ✅ Keep overlay alive, but make it transparent so video is unobstructed
-    if (startOverlay) startOverlay.classList.add("videoMode");
+  // 🔥 Start preload, but do NOT block first pano on it.
+  const preloadPromise = preloadStartAssets().catch((e) => {
+    console.warn("Preload assets failed (continuing):", e);
+  });
 
-    try {
-      // Run intro + preload together
-      const preloadPromise = preloadStartAssets().catch((e) => {
-        console.warn("Preload assets failed (continuing):", e);
-      });
+  try {
+    // Run intro (don’t care if preload is still running)
+    await playIntroVideoOnce().catch((e) => {
+      console.warn("Intro video failed (continuing):", e);
+    });
 
-      const introPromise = playIntroVideoOnce().catch((e) => {
-        console.warn("Intro video failed (continuing):", e);
-      });
+    // ✅ Only require pano 0 for first view
+    const first = await ensurePanoLoaded(0);
+    setSphereMap(first);
 
-      await Promise.all([preloadPromise, introPromise]);
+    yaw = HERO[0]?.yaw ?? 0;
+    pitch = HERO[0]?.pitch ?? 0;
+    targetYaw = yaw;
+    targetPitch = pitch;
+    applyYawPitch();
 
-      // Now show first pano
-      const first = await ensurePanoLoaded(0);
-      setSphereMap(first);
+    state.index = 0;
+    updateIndicator(0);
+    preloadNearby(0);
 
-      yaw = HERO[0]?.yaw ?? 0;
-      pitch = HERO[0]?.pitch ?? 0;
-      targetYaw = yaw;
-      targetPitch = pitch;
-      applyYawPitch();
+    setUIEnabled(true);
+    navWrap.classList.remove("hidden");
+    requestAnimationFrame(() => fadeInPano(450));
 
-      state.index = 0;
-      updateIndicator(0);
-      preloadNearby(0);
+    if (startOverlay) startOverlay.classList.remove("videoMode");
+    hideStartOverlay();
 
-      setUIEnabled(true);
-      navWrap.classList.remove("hidden");
-      requestAnimationFrame(() => fadeInPano(450));
+    // ✅ Let preloading continue in the background
+    // Optionally: await it AFTER pano is visible (won’t block UX)
+    preloadPromise.then(() => console.log("✅ background preload complete"));
+  } catch (e) {
+    console.error("Begin tour failed:", e);
 
-      // ✅ Now we can hide overlay completely
-      if (startOverlay) startOverlay.classList.remove("videoMode");
-      hideStartOverlay();
-    } catch (e) {
-      console.error("Begin tour failed:", e);
+    if (startOverlay) startOverlay.classList.remove("videoMode");
+    if (startCard) startCard.classList.remove("hidden");
+    showStartOverlay();
 
-      // Put UI back so user can retry
-      if (startOverlay) startOverlay.classList.remove("videoMode");
-      if (startCard) startCard.classList.remove("hidden");
-      showStartOverlay();
-
-      startBtn.disabled = false;
-      if (introVideoEl) introVideoEl.classList.remove("show");
-    }
-  },
-  { once: true }
-);
+    startBtn.disabled = false;
+    if (introVideoEl) introVideoEl.classList.remove("show");
+  }
+}, { once: true });
 resizeRenderer();
 applyRenderLookForMode("pano");
 } // end if (startBtn)
