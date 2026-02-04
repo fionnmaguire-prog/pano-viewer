@@ -253,7 +253,6 @@
 
       /* =============================
          BEGIN TOUR OVERLAY
-         (critical: keep button clickable)
       ============================== */
 
       #startOverlay {
@@ -273,18 +272,21 @@
         pointer-events: none;
       }
 
-      /* When intro video plays, overlay shouldn't dim the frame */
       #startOverlay.videoMode {
         background: transparent;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
       }
 
-      /* Ensure button sits above video layer */
       #startCard {
         position: relative;
         z-index: 2;
         text-align: center;
+      }
+
+      /* ✅ THIS is what you were missing — lets JS hide the button instantly */
+      #startCard.hidden {
+        display: none;
       }
 
       #startBtn {
@@ -308,7 +310,6 @@
         transform: translateY(1px);
       }
 
-      /* Critical: intro video must NOT steal clicks */
       #introVideo {
         position: absolute;
         inset: 0;
@@ -320,8 +321,8 @@
         opacity: 0;
         transition: opacity 220ms ease;
 
-        pointer-events: none; /* ✅ keeps BEGIN TOUR clickable */
-        z-index: 1;           /* behind #startCard (z=2) */
+        pointer-events: none;
+        z-index: 1;
       }
       #introVideo.show {
         opacity: 1;
@@ -347,7 +348,6 @@
         <span id="brandText" class="hidden">rtfmediasolutions.com</span>
       </a>
 
-      <!-- Begin Tour Overlay -->
       <div id="startOverlay" aria-label="Begin tour overlay">
         <div id="startCard">
           <button id="startBtn" type="button">BEGIN TOUR</button>
@@ -357,10 +357,8 @@
 
       <video id="transitionVideo" playsinline muted preload="auto"></video>
 
-      <!-- Indicator bottom-center -->
       <div id="indicator">01 / 21</div>
 
-      <!-- Nav buttons bottom-right -->
       <div id="navWrap">
         <div id="nav">
           <button id="backBtn" aria-label="Back" type="button">BACK</button>
