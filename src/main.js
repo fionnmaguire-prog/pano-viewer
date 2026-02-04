@@ -217,8 +217,14 @@ loadingOverlay.style.top = "0";
 loadingOverlay.style.width = "100%";
 loadingOverlay.style.height = "100%";
 loadingOverlay.style.display = "none";
-loadingOverlay.style.alignItems = "center";
+
+// ✅ bottom-middle placement
+loadingOverlay.style.alignItems = "flex-end";
 loadingOverlay.style.justifyContent = "center";
+
+// keep it above the very bottom UI
+loadingOverlay.style.paddingBottom = "78px"; // tweak (60–100px) to taste
+loadingOverlay.style.boxSizing = "border-box";
 loadingOverlay.style.pointerEvents = "none";
 loadingOverlay.style.zIndex = "30"; // above fadeOverlay (10) and UI
 
