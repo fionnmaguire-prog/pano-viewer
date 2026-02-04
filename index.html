@@ -11,6 +11,12 @@
         --frame-border: rgba(255, 255, 255, 0.08);
         --frame-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
         --ui-safe-bottom: 16px;
+
+        /* NAV COLORS */
+        --nav-bg: rgba(0, 0, 0, 0.85);
+        --nav-bg-hover: rgba(0, 0, 0, 1);
+        --nav-text: rgba(255, 255, 255, 0.95);
+        --nav-disabled: rgba(255, 255, 255, 0.35);
       }
 
       html, body {
@@ -94,109 +100,38 @@
         top: 14px;
         right: 14px;
         z-index: 20;
-
         display: inline-flex;
         align-items: center;
         gap: 10px;
-
         padding: 10px 12px;
         border-radius: 999px;
-
         background: rgba(0,0,0,0.45);
         backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255,255,255,0.10);
-
         color: rgba(255,255,255,0.92);
         text-decoration: none;
         font-size: 12px;
-        letter-spacing: 0.02em;
-        user-select: none;
       }
 
       #brandLink:hover {
-        background: rgba(0,0,0,0.60);
+        background: rgba(0,0,0,0.6);
       }
 
-      #brandLogo {
-        height: 22px;
-        width: auto;
-        display: block;
-      }
-
-      #brandText {
-        line-height: 1;
-        white-space: nowrap;
-      }
-
+      #brandLogo { height: 22px; }
       #brandText.hidden,
-      #brandLogo.hidden {
-        display: none;
-      }
-
-      /* Dollhouse sub-tabs (bottom-right) */
-      #dollBtns {
-        position: absolute;
-        right: 14px;
-        bottom: 14px;
-        z-index: 20;
-
-        display: inline-flex;
-        gap: 8px;
-        padding: 8px;
-        border-radius: 14px;
-        background: rgba(0,0,0,0.45);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255,255,255,0.10);
-      }
-
-      #dollBtns.hidden {
-        display: none;
-      }
-
-      .dollBtn {
-        appearance: none;
-        border: 0;
-        cursor: pointer;
-        padding: 10px 12px;
-        border-radius: 12px;
-        font-size: 12px;
-        color: rgba(255,255,255,0.9);
-        background: rgba(255,255,255,0.10);
-        min-width: 56px;
-      }
-      .dollBtn.active {
-        color: rgba(0,0,0,0.9);
-        background: rgba(255,255,255,0.92);
-      }
-
-      #transitionVideo {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        z-index: 5;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 180ms ease;
-        background: black;
-      }
+      #brandLogo.hidden { display: none; }
 
       /* =============================
-         UPDATED NAV UI
-         - NEXT/BACK in bottom-right
-         - indicator stays bottom-middle
+         NAVIGATION
       ============================== */
 
-      /* Indicator stays bottom center */
+      /* Indicator bottom-center */
       #indicator {
         position: absolute;
         left: 50%;
         bottom: var(--ui-safe-bottom);
         transform: translateX(-50%);
         z-index: 12;
-
         padding: 6px 10px;
         border-radius: 999px;
         font-size: 12px;
@@ -207,14 +142,13 @@
         user-select: none;
       }
 
-      /* Nav buttons move to bottom-right */
+      /* Nav buttons bottom-right */
       #navWrap {
         position: absolute;
         right: 14px;
         bottom: var(--ui-safe-bottom);
         z-index: 12;
         display: flex;
-        align-items: center;
         gap: 10px;
         transition: opacity 160ms ease;
       }
@@ -229,38 +163,62 @@
         gap: 10px;
       }
 
+      /* 🔥 UPDATED BUTTON STYLE */
       #nav button {
         appearance: none;
-        border: 0;
+        border: 1px solid rgba(255,255,255,0.15);
         cursor: pointer;
 
-        /* bigger */
         height: 52px;
-        padding: 0 16px;
+        padding: 0 18px;
         border-radius: 14px;
 
-        /* label style */
         font-size: 13px;
         font-weight: 750;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
 
-        background: rgba(255,255,255,0.92);
-        color: rgba(0,0,0,0.92);
-        box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+        background: var(--nav-bg);
+        color: var(--nav-text);
+
+        box-shadow:
+          0 8px 22px rgba(0,0,0,0.45),
+          inset 0 1px 0 rgba(255,255,255,0.05);
+
+        transition:
+          transform 120ms ease,
+          box-shadow 120ms ease,
+          background 120ms ease;
       }
 
-      #nav button:active {
-        transform: translateY(1px);
+      /* ✨ Hover */
+      #nav button:hover:not(:disabled) {
+        background: var(--nav-bg-hover);
+        transform: translateY(-1px);
+        box-shadow:
+          0 14px 34px rgba(0,0,0,0.65),
+          inset 0 1px 0 rgba(255,255,255,0.08);
       }
 
+      /* 🫳 Active press */
+      #nav button:active:not(:disabled) {
+        transform: translateY(0);
+        box-shadow:
+          0 6px 16px rgba(0,0,0,0.45),
+          inset 0 1px 0 rgba(255,255,255,0.05);
+      }
+
+      /* 🚫 Disabled */
       #nav button:disabled {
-        opacity: 0.35;
+        color: var(--nav-disabled);
+        border-color: rgba(255,255,255,0.08);
         cursor: default;
         transform: none;
+        box-shadow: none;
+        background: rgba(0,0,0,0.6);
       }
 
-      /* Begin Tour Overlay (button only) */
+      /* Intro / overlay unchanged */
       #startOverlay {
         position: absolute;
         inset: 0;
@@ -269,7 +227,6 @@
         place-items: center;
         background: rgba(0,0,0,0.72);
         backdrop-filter: blur(10px);
-        transition: opacity 300ms ease;
       }
 
       #startOverlay.hidden {
@@ -277,44 +234,17 @@
         pointer-events: none;
       }
 
-      #startOverlay.videoMode {
-        background: transparent;
-        backdrop-filter: none;
-      }
-
-      #startCard {
-        width: min(520px, calc(100% - 36px));
-        padding: 18px;
-        border-radius: 18px;
-        background: rgba(0,0,0,0.0);
-        border: 0;
-        box-shadow: none;
-        color: rgba(255,255,255,0.92);
-        text-align: center;
-        z-index: 2;
-      }
-
-      #startCard.hidden {
-        display: none;
-      }
-
+      #startCard { text-align: center; }
       #startBtn {
-        appearance: none;
-        border: 0;
-        cursor: pointer;
         padding: 12px 16px;
         border-radius: 14px;
         font-size: 14px;
         font-weight: 650;
         background: rgba(255,255,255,0.92);
         color: rgba(0,0,0,0.9);
-        box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+        border: 0;
+        cursor: pointer;
         text-transform: uppercase;
-      }
-
-      #startBtn:disabled {
-        opacity: 0.5;
-        cursor: default;
       }
 
       #introVideo {
@@ -323,59 +253,40 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        background: #000;
         opacity: 0;
-        pointer-events: none;
         transition: opacity 220ms ease;
       }
-      #introVideo.show {
-        opacity: 1;
-      }
+      #introVideo.show { opacity: 1; }
     </style>
   </head>
 
   <body>
     <div id="app">
       <div id="tabs">
-        <button id="tabPano" class="tabBtn active" type="button">Interior</button>
-        <button id="tabDollhouse" class="tabBtn" type="button">Dollhouse</button>
+        <button id="tabPano" class="tabBtn active">Interior</button>
+        <button id="tabDollhouse" class="tabBtn">Dollhouse</button>
       </div>
 
-      <a
-        id="brandLink"
-        href="https://rtfmediasolutions.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open rtfmediasolutions.com"
-      >
-        <img id="brandLogo" alt="RTF Media Solutions" draggable="false" />
+      <a id="brandLink" href="https://rtfmediasolutions.com" target="_blank">
+        <img id="brandLogo" alt="RTF Media Solutions" />
         <span id="brandText" class="hidden">rtfmediasolutions.com</span>
       </a>
 
-      <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
-        <button id="btnFull" class="dollBtn active" type="button">Full</button>
-        <button id="btnUp" class="dollBtn" type="button">Up</button>
-        <button id="btnDown" class="dollBtn" type="button">Down</button>
-      </div>
-
-      <!-- Begin Tour Overlay -->
-      <div id="startOverlay" aria-label="Begin tour overlay">
+      <div id="startOverlay">
         <div id="startCard">
-          <button id="startBtn" type="button">BEGIN TOUR</button>
+          <button id="startBtn">BEGIN TOUR</button>
         </div>
         <video id="introVideo" playsinline muted></video>
       </div>
 
       <video id="transitionVideo" playsinline muted preload="auto"></video>
 
-      <!-- ✅ Indicator stays bottom-center -->
       <div id="indicator">01 / 21</div>
 
-      <!-- ✅ Nav buttons move to bottom-right and become NEXT/BACK -->
       <div id="navWrap">
         <div id="nav">
-          <button id="backBtn" aria-label="Back">BACK</button>
-          <button id="forwardBtn" aria-label="Next">NEXT</button>
+          <button id="backBtn">BACK</button>
+          <button id="forwardBtn">NEXT</button>
         </div>
       </div>
     </div>
