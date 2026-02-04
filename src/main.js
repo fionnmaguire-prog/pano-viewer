@@ -1552,7 +1552,7 @@ if (mode === "dollhouse") {
 // -----------------------------
 const gltfLoader = new GLTFLoader();
 const dollCache = new Map(); // key -> { root, center, size, alignedOnce, nodes }
-let activeDollKey = "full";
+let activeDollKey = "down";
 let activeDollRoot = null;
 
 let refCenter = null; // Vector3 from FULL model
