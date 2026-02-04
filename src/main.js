@@ -76,8 +76,16 @@ function getTourId() {
   return params.get("tour") || "prod_demo_house_01";
 }
 
+function getApiBase() {
+  const params = new URLSearchParams(location.search);
+  return (
+    params.get("api") ||
+    "https://rtf-player-api.fionnmaguire.workers.dev"
+  ).replace(/\/$/, "");
+}
+
 let TOUR = null;
-let TOUR_BASE = ""; // e.g. "/tours/prod_demo_house_01/"
+let TOUR_BASE = "";
 
 function pad(n, len) {
   return String(n).padStart(len, "0");
@@ -98,7 +106,9 @@ function applyTransitionPattern(pattern, a2, b2) {
 
 async function loadTourConfig() {
   const id = getTourId();
-  TOUR_BASE = `/tours/${id}/`;
+  const API_BASE = getApiBase();
+
+  TOUR_BASE = `${API_BASE}/tours/${id}/`;
 
   const res = await fetch(`${TOUR_BASE}tour.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load tour.json for tour=${id}`);
@@ -111,8 +121,8 @@ async function loadTourConfig() {
 function getIntroVideoUrl() {
   // Use MP4 if you convert it (recommended), fallback to mov if not
   // Put the file inside: /tours/<tourId>/intro.mp4 (or intro.mov)
-  const mp4 = `${TOUR_BASE}intro.mp4`;
-  const mov = `${TOUR_BASE}intro.mov`;
+  const mp4 = `${TOUR_BASE}intro/intro.mp4`;
+  const mov = `${TOUR_BASE}intro/intro.mov`;
 
   // If you haven't converted yet, leave as mov by returning mov.
   // If you DO convert, change this to return mp4 only.
