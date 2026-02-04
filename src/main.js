@@ -207,6 +207,145 @@ introVideoEl.volume = 1.0; // adjust if needed (0.0 – 1.0)
   if (startOverlay) startOverlay.classList.remove("videoMode");
 }
 // -----------------------------
+// Loading overlay (progress bar)
+// -----------------------------
+const loadingOverlay = document.createElement("div");
+loadingOverlay.id = "loadingOverlay";
+loadingOverlay.style.position = "absolute";
+loadingOverlay.style.left = "0";
+loadingOverlay.style.top = "0";
+loadingOverlay.style.width = "100%";
+loadingOverlay.style.height = "100%";
+loadingOverlay.style.display = "none";
+loadingOverlay.style.alignItems = "center";
+loadingOverlay.style.justifyContent = "center";
+loadingOverlay.style.pointerEvents = "none";
+loadingOverlay.style.zIndex = "30"; // above fadeOverlay (10) and UI
+
+const loadingCard = document.createElement("div");
+loadingCard.style.minWidth = "260px";
+loadingCard.style.maxWidth = "420px";
+loadingCard.style.width = "42%";
+loadingCard.style.padding = "14px 14px 12px";
+loadingCard.style.borderRadius = "12px";
+loadingCard.style.background = "rgba(0,0,0,0.65)";
+loadingCard.style.backdropFilter = "blur(8px)";
+loadingCard.style.border = "1px solid rgba(255,255,255,0.10)";
+loadingCard.style.boxShadow = "0 10px 30px rgba(0,0,0,0.35)";
+
+const loadingText = document.createElement("div");
+loadingText.style.color = "rgba(255,255,255,0.92)";
+loadingText.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+loadingText.style.fontSize = "12px";
+loadingText.style.fontWeight = "600";
+loadingText.style.letterSpacing = "0.4px";
+loadingText.style.textTransform = "uppercase";
+loadingText.style.marginBottom = "10px";
+loadingText.textContent = "Loading…";
+
+const loadingBarOuter = document.createElement("div");
+loadingBarOuter.style.width = "100%";
+loadingBarOuter.style.height = "8px";
+loadingBarOuter.style.borderRadius = "999px";
+loadingBarOuter.style.background = "rgba(255,255,255,0.14)";
+loadingBarOuter.style.overflow = "hidden";
+
+const loadingBarInner = document.createElement("div");
+loadingBarInner.style.width = "0%";
+loadingBarInner.style.height = "100%";
+loadingBarInner.style.borderRadius = "999px";
+loadingBarInner.style.background = "rgba(255,255,255,0.92)";
+loadingBarInner.style.transition = "width 120ms ease";
+
+const loadingPct = document.createElement("div");
+loadingPct.style.color = "rgba(255,255,255,0.75)";
+loadingPct.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+loadingPct.style.fontSize = "12px";
+loadingPct.style.fontWeight = "600";
+loadingPct.style.marginTop = "10px";
+loadingPct.style.textAlign = "right";
+loadingPct.textContent = "0%";
+
+loadingBarOuter.appendChild(loadingBarInner);
+loadingCard.appendChild(loadingText);
+loadingCard.appendChild(loadingBarOuter);
+loadingCard.appendChild(loadingPct);
+loadingOverlay.appendChild(loadingCard);
+container.appendChild(loadingOverlay);
+
+function setLoadingVisible(visible, text = "Loading…") {
+  loadingOverlay.style.display = visible ? "flex" : "none";
+  if (visible) {
+    loadingText.textContent = text;
+    setLoadingProgress(0);
+  }
+}
+
+function setLoadingProgress(p01) {
+  const p = Math.max(0, Math.min(1, Number(p01) || 0));
+  loadingBarInner.style.width = `${Math.round(p * 100)}%`;
+  loadingPct.textContent = `${Math.round(p * 100)}%`;
+}
+
+// Weighted progress aggregator so multiple assets contribute to one bar.
+// Usage:
+//   const pm = beginProgressSession("Loading dollhouse…");
+//   const t1 = pm.task("Pano", 1);
+//   t1.update(0.4); ... t1.done();
+//   pm.finish();
+function beginProgressSession(label = "Loading…") {
+  let active = true;
+  setLoadingVisible(true, label);
+
+  const tasks = new Map(); // id -> { weight, p }
+
+  const recompute = () => {
+    if (!active) return;
+    let wSum = 0;
+    let acc = 0;
+    for (const t of tasks.values()) {
+      wSum += t.weight;
+      acc += t.weight * t.p;
+    }
+    const out = wSum > 0 ? acc / wSum : 0;
+    setLoadingProgress(out);
+  };
+
+  const task = (name, weight = 1) => {
+    const id = `${name}_${Math.random().toString(16).slice(2)}`;
+    tasks.set(id, { weight: Math.max(0.01, weight), p: 0 });
+    recompute();
+
+    return {
+      update(p01) {
+        const t = tasks.get(id);
+        if (!t) return;
+        t.p = Math.max(0, Math.min(1, Number(p01) || 0));
+        recompute();
+      },
+      done() {
+        const t = tasks.get(id);
+        if (!t) return;
+        t.p = 1;
+        recompute();
+      },
+    };
+  };
+
+  const finish = () => {
+    active = false;
+    setLoadingProgress(1);
+    setTimeout(() => setLoadingVisible(false), 180);
+  };
+
+  const cancel = () => {
+    active = false;
+    setLoadingVisible(false);
+  };
+
+  return { task, finish, cancel };
+}
+// -----------------------------
 // Crossfade overlay (pano <-> dollhouse)
 // -----------------------------
 const fadeOverlay = document.createElement("div");
@@ -940,7 +1079,7 @@ async function preloadStartAssets() {
 // -----------------------------
 const texLoader = new THREE.TextureLoader();
 
-function loadPano(url) {
+function loadPano(url, onProgress01 = null) {
   return new Promise((resolve, reject) => {
     texLoader.load(
       url,
@@ -951,7 +1090,13 @@ function loadPano(url) {
         tex.magFilter = THREE.LinearFilter;
         resolve(tex);
       },
-      undefined,
+      (xhr) => {
+        if (typeof onProgress01 === "function") {
+          const total = xhr?.total || 0;
+          const loaded = xhr?.loaded || 0;
+          if (total > 0) onProgress01(loaded / total);
+        }
+      },
       () => reject(new Error(`Failed to load pano: ${url}`))
     );
   });
@@ -1440,11 +1585,15 @@ async function cancelActivePanoTransition(reason = "cancel") {
 // -----------------------------
 // Pano texture caching
 // -----------------------------
-async function ensurePanoLoaded(i) {
+async function ensurePanoLoaded(i, onProgress01 = null) {
   if (i < 0 || i >= PANOS.length) return null;
-  if (state.panoTextures[i]) return state.panoTextures[i];
-  const tex = await loadPano(PANOS[i]);
+  if (state.panoTextures[i]) {
+    if (typeof onProgress01 === "function") onProgress01(1);
+    return state.panoTextures[i];
+  }
+  const tex = await loadPano(PANOS[i], onProgress01);
   state.panoTextures[i] = tex;
+  if (typeof onProgress01 === "function") onProgress01(1);
   return tex;
 }
 
@@ -1981,8 +2130,11 @@ function alignModelToReference(key) {
   entry.alignedOnce = true;
 }
 
-async function loadDollModel(key) {
-  if (dollCache.has(key)) return dollCache.get(key).root;
+async function loadDollModel(key, onProgress01 = null) {
+  if (dollCache.has(key)) {
+    if (typeof onProgress01 === "function") onProgress01(1);
+    return dollCache.get(key).root;
+  }
 
   const url = dollUrlForKey(key);
 
@@ -2009,7 +2161,13 @@ if (key === "full") dollhouseReady.full = true;
 
 resolve(root);
       },
-      undefined,
+      (xhr) => {
+        if (typeof onProgress01 === "function") {
+          const total = xhr?.total || 0;
+          const loaded = xhr?.loaded || 0;
+          if (total > 0) onProgress01(loaded / total);
+        }
+      },
       (err) => reject(err)
     );
   });
@@ -2264,27 +2422,35 @@ tabDollhouse.addEventListener("click", async () => {
   const stillValid = () => token === dollhouseEnterToken;
 
   const comingFromPano = (mode === "pano");
+  // Progress bar (only shown during user-visible waits)
+  let pm = null;
 
   try {
     // 1) Fade to black first (only if leaving pano)
     if (comingFromPano) {
       await fadeOverlayTo(1, 100);
-      if (!stillValid()) return;
+      if (!stillValid()) { if (pm) pm.finish(); return; }
     }
 
     // 2) Switch mode
     setMode("dollhouse");
 
+    pm = beginProgressSession("Loading dollhouse…");
+    const tRef = pm.task("reference", 2.0);
+    const tModel = pm.task("model", 3.0);
+
     // 3) HARD guarantee: even if fadeOverlayTo got cancelled mid-flight,
     //    we are definitely black while loading.
     fadeOverlay.style.opacity = "1";
-    if (!stillValid()) return;
+    if (!stillValid()) { if (pm) pm.finish(); return; }
 
     setDollButtonsActive(activeDollKey);
 
     // 4) Ensure reference is ready (bounds, refCenter, limits)
+    // ensureReferenceReady may load FULL internally; show that as part of "reference"
     await ensureReferenceReady();
-    if (!stillValid()) return;
+    tRef.done();
+    if (!stillValid()) { if (pm) pm.finish(); return; }
 
     // 5) If returning from pano, let reset pick correct model first
     if (needsDollReset) {
@@ -2320,27 +2486,30 @@ tabDollhouse.addEventListener("click", async () => {
         }
       }
 
-      // Start reset animation (this may switch models internally)
+      // The reset animation is visual; once reference is ready, treat "loading" as complete.
+      tModel.done();
       const resetPromise = resetDollhouseFromCurrentPano(true);
 
       // Reveal immediately so user sees *something* while the reset anim runs
       fadeOverlay.style.opacity = "0";
       await fadeOverlayTo(0, 150);
-      if (!stillValid()) return;
+      if (!stillValid()) { if (pm) pm.finish(); return; }
 
       await resetPromise;
-      if (!stillValid()) return;
+      if (!stillValid()) { if (pm) pm.finish(); return; }
 
       // Final hard guarantee (never stuck black)
       fadeOverlay.style.opacity = "0";
+      if (pm) pm.finish();
       return;
     }
 
     // 6) Otherwise load whatever the user last selected
     setDollButtonsActive(activeDollKey);
 
-    const root = await loadDollModel(activeDollKey);
-    if (!stillValid()) return;
+    const root = await loadDollModel(activeDollKey, (p) => tModel.update(p));
+    tModel.done();
+    if (!stillValid()) { if (pm) pm.finish(); return; }
 
     alignModelToReference(activeDollKey);
     setActiveDollRoot(root);
@@ -2350,7 +2519,7 @@ tabDollhouse.addEventListener("click", async () => {
       framedOnce = true;
 
       await loadDollModel("full").catch(() => {});
-      if (!stillValid()) return;
+      if (!stillValid()) { if (pm) pm.finish(); return; }
 
       if (defaultDollView) {
         applyOrbitViewWithLockedPivot(defaultDollView);
@@ -2385,9 +2554,10 @@ tabDollhouse.addEventListener("click", async () => {
 
     // Final hard guarantee
     fadeOverlay.style.opacity = "0";
+    if (pm) pm.finish();
   } catch (e) {
     console.error("Failed to load dollhouse GLB:", e);
-
+    if (pm) pm.cancel();
     // Never leave user on a black overlay if something errors
     try {
       fadeOverlay.style.opacity = "0";
@@ -2472,6 +2642,12 @@ if (startBtn) {
 startBtn.addEventListener("click", async () => {
   startBtn.disabled = true;
 
+  let pm = null;
+  let pmTimer = setTimeout(() => {
+    // Only show if loading takes longer than a moment
+    pm = beginProgressSession("Loading tour…");
+  }, 350);
+
   startBrandSwapTimer(10000);
   if (startCard) startCard.classList.add("hidden");
   if (startOverlay) startOverlay.classList.add("videoMode");
@@ -2488,8 +2664,17 @@ startBtn.addEventListener("click", async () => {
     });
 
     // ✅ Only require pano 0 for first view
-    const first = await ensurePanoLoaded(0);
+    const first = await ensurePanoLoaded(0, (p) => {
+      if (pm) {
+        const t = pm.__panoTask || (pm.__panoTask = pm.task("pano0", 4.0));
+        t.update(p);
+      }
+    });
+    if (pm && pm.__panoTask) pm.__panoTask.done();
     setSphereMap(first);
+
+    clearTimeout(pmTimer);
+    if (pm) pm.finish();
 
     yaw = HERO[0]?.yaw ?? 0;
     pitch = HERO[0]?.pitch ?? 0;
@@ -2513,6 +2698,8 @@ startBtn.addEventListener("click", async () => {
     preloadPromise.then(() => console.log("✅ background preload complete"));
   } catch (e) {
     console.error("Begin tour failed:", e);
+    clearTimeout(pmTimer);
+    if (pm) pm.cancel();
 
     if (startOverlay) startOverlay.classList.remove("videoMode");
     if (startCard) startCard.classList.remove("hidden");
