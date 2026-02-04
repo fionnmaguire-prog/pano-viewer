@@ -88,9 +88,7 @@
         background: rgba(255,255,255,0.92);
       }
 
-      /* -----------------------------
-         NEW: Brand link (top-right)
-      ----------------------------- */
+      /* Brand link (top-right) */
       #brandLink {
         position: absolute;
         top: 14px;
@@ -185,25 +183,20 @@
         background: black;
       }
 
-      #navWrap {
+      /* =============================
+         UPDATED NAV UI
+         - NEXT/BACK in bottom-right
+         - indicator stays bottom-middle
+      ============================== */
+
+      /* Indicator stays bottom center */
+      #indicator {
         position: absolute;
         left: 50%;
         bottom: var(--ui-safe-bottom);
         transform: translateX(-50%);
-        z-index: 10;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        transition: opacity 160ms ease;
-      }
+        z-index: 12;
 
-      #navWrap.hidden {
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      #indicator {
         padding: 6px 10px;
         border-radius: 999px;
         font-size: 12px;
@@ -214,30 +207,60 @@
         user-select: none;
       }
 
-      #nav {
+      /* Nav buttons move to bottom-right */
+      #navWrap {
+        position: absolute;
+        right: 14px;
+        bottom: var(--ui-safe-bottom);
+        z-index: 12;
         display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: opacity 160ms ease;
+      }
+
+      #navWrap.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #nav {
+        display: inline-flex;
         gap: 10px;
       }
 
       #nav button {
-        width: 54px;
-        height: 44px;
+        appearance: none;
         border: 0;
-        border-radius: 12px;
-        font-size: 18px;
         cursor: pointer;
+
+        /* bigger */
+        height: 52px;
+        padding: 0 16px;
+        border-radius: 14px;
+
+        /* label style */
+        font-size: 13px;
+        font-weight: 750;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+
         background: rgba(255,255,255,0.92);
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+        color: rgba(0,0,0,0.92);
+        box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+      }
+
+      #nav button:active {
+        transform: translateY(1px);
       }
 
       #nav button:disabled {
         opacity: 0.35;
         cursor: default;
+        transform: none;
       }
 
-      /* -----------------------------
-         Begin Tour Overlay (button only)
-      ----------------------------- */
+      /* Begin Tour Overlay (button only) */
       #startOverlay {
         position: absolute;
         inset: 0;
@@ -254,13 +277,11 @@
         pointer-events: none;
       }
 
-      /* ✅ When intro video is playing, overlay should not darken/blur the frame */
       #startOverlay.videoMode {
         background: transparent;
         backdrop-filter: none;
       }
 
-      /* keep the card minimal: just holds the button */
       #startCard {
         width: min(520px, calc(100% - 36px));
         padding: 18px;
@@ -273,7 +294,6 @@
         z-index: 2;
       }
 
-      /* ✅ Hide start UI immediately after click (video remains visible) */
       #startCard.hidden {
         display: none;
       }
@@ -289,7 +309,7 @@
         background: rgba(255,255,255,0.92);
         color: rgba(0,0,0,0.9);
         box-shadow: 0 10px 28px rgba(0,0,0,0.35);
-        text-transform: uppercase; /* ✅ enforce ALL CAPS */
+        text-transform: uppercase;
       }
 
       #startBtn:disabled {
@@ -297,7 +317,6 @@
         cursor: default;
       }
 
-      /* Intro video covers the whole frame while loading */
       #introVideo {
         position: absolute;
         inset: 0;
@@ -322,7 +341,6 @@
         <button id="tabDollhouse" class="tabBtn" type="button">Dollhouse</button>
       </div>
 
-      <!-- ✅ NEW: top-right hyperlink button -->
       <a
         id="brandLink"
         href="https://rtfmediasolutions.com"
@@ -330,11 +348,7 @@
         rel="noopener noreferrer"
         aria-label="Open rtfmediasolutions.com"
       >
-        <img
-          id="brandLogo"
-          alt="RTF Media Solutions"
-          draggable="false"
-        />
+        <img id="brandLogo" alt="RTF Media Solutions" draggable="false" />
         <span id="brandText" class="hidden">rtfmediasolutions.com</span>
       </a>
 
@@ -349,17 +363,19 @@
         <div id="startCard">
           <button id="startBtn" type="button">BEGIN TOUR</button>
         </div>
-
         <video id="introVideo" playsinline muted></video>
       </div>
 
       <video id="transitionVideo" playsinline muted preload="auto"></video>
 
+      <!-- ✅ Indicator stays bottom-center -->
+      <div id="indicator">01 / 21</div>
+
+      <!-- ✅ Nav buttons move to bottom-right and become NEXT/BACK -->
       <div id="navWrap">
-        <div id="indicator">01 / 21</div>
         <div id="nav">
-          <button id="backBtn" aria-label="Back">◀</button>
-          <button id="forwardBtn" aria-label="Forward">▶</button>
+          <button id="backBtn" aria-label="Back">BACK</button>
+          <button id="forwardBtn" aria-label="Next">NEXT</button>
         </div>
       </div>
     </div>
