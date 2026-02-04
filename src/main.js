@@ -1377,17 +1377,24 @@ function deserializeOrbitView(o) {
 
 function saveDefaultDollViewNow() {
   defaultDollView = saveOrbitView();
+
+  // ✅ Lock the saved pivot to refCenter so rotation point never changes
+  if (refCenter && defaultDollView?.target && defaultDollView?.camPos) {
+    const offset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+    defaultDollView.target = refCenter.clone();
+    defaultDollView.camPos = refCenter.clone().add(offset);
+  }
+
   try {
     localStorage.setItem(
       DOLL_DEFAULT_VIEW_STORAGE_KEY,
       JSON.stringify(serializeOrbitView(defaultDollView))
     );
-    console.log("✅ Saved default dollhouse view");
+    console.log("✅ Saved default dollhouse view (locked pivot)");
   } catch (e) {
     console.warn("Could not save default doll view:", e);
   }
 }
-
 function loadSavedDefaultDollView() {
   try {
     const raw = localStorage.getItem(DOLL_DEFAULT_VIEW_STORAGE_KEY);
@@ -1560,7 +1567,7 @@ async function resetDollhouseFromCurrentPano(animated = true) {
   if (node) {
     snapOrbitToNode(node, 0.05, 1.0);
   } else {
-    restoreOrbitView(defaultDollView);
+    applyOrbitViewWithLockedPivot(defaultDollView);
   }
 
   // 2) APPLY the pano rotation offset immediately to this starting view
@@ -1584,7 +1591,7 @@ async function resetDollhouseFromCurrentPano(animated = true) {
     rotateEndAt: 1.0,
   });
 } else {
-  restoreOrbitView(defaultDollView);
+  applyOrbitViewWithLockedPivot(defaultDollView);
 }
 }
 function prepDollhouseSceneGraph(root) {
@@ -1751,6 +1758,29 @@ function restoreOrbitView(v) {
   dollCamera.updateProjectionMatrix();
   orbit.update();
 }
+// ✅ Apply a saved view BUT keep pivot locked to refCenter (original rotation point)
+function applyOrbitViewWithLockedPivot(v) {
+  if (!v) return;
+
+  // If we don't have the reference pivot yet, fall back to normal restore
+  if (!refCenter) {
+    restoreOrbitView(v);
+    return;
+  }
+
+  // Preserve the camera offset relative to the saved target,
+  // but re-anchor it onto the reference pivot.
+  const savedTarget = v.target?.clone?.() || orbit.target.clone();
+  const offset = v.camPos.clone().sub(savedTarget);
+
+  orbit.target.copy(refCenter);
+  dollCamera.position.copy(refCenter.clone().add(offset));
+  dollCamera.quaternion.copy(v.camQuat);
+  dollCamera.zoom = v.zoom;
+
+  dollCamera.updateProjectionMatrix();
+  orbit.update();
+}
 
 // Smoothly animate orbit camera + target back to a saved view
 // Optionally also rotate around the target during the animation.
@@ -1829,7 +1859,7 @@ async function resetDollhouseView(animated = true) {
       rotateEndAt: 1.0,
     });
   } else {
-    restoreOrbitView(defaultDollView);
+    applyOrbitViewWithLockedPivot(defaultDollView);
   }
 }
 
@@ -1908,14 +1938,14 @@ if (!framedOnce) {
 
   // ✅ 1) If tour.json provided a default, use it (do NOT override)
   if (defaultDollView) {
-    restoreOrbitView(defaultDollView);
+    applyOrbitViewWithLockedPivot(defaultDollView);
     applyReferenceClippingAndLimits();
   } else {
     // ✅ 2) Otherwise use saved localStorage (dev/admin workflow)
     const saved = loadSavedDefaultDollView();
     if (saved) {
       defaultDollView = saved;
-      restoreOrbitView(defaultDollView);
+      applyOrbitViewWithLockedPivot(defaultDollView);
       applyReferenceClippingAndLimits();
     } else {
       // ✅ 3) Otherwise compute one by framing and set as default
