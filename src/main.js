@@ -1507,32 +1507,39 @@ async function ensureBestModelHasNode(panoIndex) {
 
 // Snap orbit view to a "zoomed in" view around a node.
 // Uses the DEFAULT view direction so it feels consistent.
-function snapOrbitToNode(mesh, distanceFactor = 0.25, targetBlend = 1.0) {
-  if (!mesh || !defaultDollView) return;
+function snapOrbitToNode(mesh, distanceFactor = 0.25) {
+  // ✅ This function is only used for the “start close to node” moment.
+  // ✅ It MUST NOT change the orbit pivot. Pivot stays refCenter.
+  if (!mesh || !defaultDollView || !refCenter) return;
 
   const nodeWorld = new THREE.Vector3();
   mesh.getWorldPosition(nodeWorld);
 
-  // Direction based on the default ("home") view
-  const baseDir = defaultDollView.camPos.clone().sub(defaultDollView.target);
-  const baseDist = baseDir.length();
-  if (baseDist < 1e-6) baseDir.set(1, 0, 0);
-  else baseDir.normalize();
-
-  // Aim at the node (or slightly blended toward it)
-  const startTarget = defaultDollView.target.clone();
-  const endTarget = startTarget.lerp(nodeWorld, targetBlend);
+  // Use the saved/default view direction (camera offset from pivot), but pivot is refCenter
+  const baseOffset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+  const baseDist = baseOffset.length();
+  if (baseDist < 1e-6) baseOffset.set(1, 0, 0);
+  else baseOffset.normalize();
 
   const endDist = Math.max(0.15, baseDist * distanceFactor);
-  const endPos = endTarget.clone().add(baseDir.multiplyScalar(endDist));
 
-  orbit.target.copy(endTarget);
-  dollCamera.position.copy(endPos);
+  // ✅ Pivot locked
+  orbit.target.copy(refCenter);
+
+  // Place camera “near node” but still orbiting around refCenter
+  // We shift the camera toward the node direction, without moving pivot.
+  const toNodeDir = nodeWorld.clone().sub(refCenter);
+  if (toNodeDir.lengthSq() > 1e-8) toNodeDir.normalize();
+
+  // Blend the direction: mostly default direction, slightly toward node
+  const dir = baseOffset.clone().lerp(toNodeDir, 0.65).normalize();
+
+  dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endDist)));
   dollCamera.zoom = defaultDollView.zoom;
+
   dollCamera.updateProjectionMatrix();
   orbit.update();
 }
-
 // When returning from pano -> dollhouse, start "in" on the current pano node,
 // then animate out to the default dollhouse view.
 async function resetDollhouseFromCurrentPano(animated = true) {
@@ -1717,6 +1724,12 @@ async function ensureReferenceReady() {
   orbit.target.copy(refCenter);
   applyReferenceClippingAndLimits();
   orbit.update();
+// ✅ Now that refCenter exists, ensure defaultDollView (if any) doesn’t carry a different pivot
+if (defaultDollView) {
+  const offset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+  defaultDollView.target = refCenter.clone();
+  defaultDollView.camPos = refCenter.clone().add(offset);
+}
 }
 
 function setActiveDollRoot(root) {
@@ -1816,7 +1829,9 @@ function animateToOrbitView(
       const e = u * u * (3 - 2 * u); // smoothstep
 
       // Lerp target/zoom first
-      orbit.target.lerpVectors(startTarget, endTarget, e);
+      // ✅ Keep orbit pivot locked during animations
+if (refCenter) orbit.target.copy(refCenter);
+else orbit.target.lerpVectors(startTarget, endTarget, e);
       dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
 
       // Lerp camera position between startPos/endPos
@@ -1882,7 +1897,7 @@ async function switchDollhouseModel(key) {
     activeDollKey = key; // ✅ set key BEFORE activating so node list is correct
     setActiveDollRoot(root);
 
-    restoreOrbitView(view);
+    applyOrbitViewWithLockedPivot(view);
     applyReferenceClippingAndLimits();
   } catch (e) {
     console.error(`Failed to load dollhouse model "${key}"`, e);
