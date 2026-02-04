@@ -84,6 +84,11 @@ function getApiBase() {
   ).replace(/\/$/, "");
 }
 
+function isAdminMode() {
+  const params = new URLSearchParams(location.search);
+  return params.get("admin") === "1";
+}
+
 let TOUR = null;
 let TOUR_BASE = "";
 
@@ -1311,21 +1316,22 @@ window.addEventListener("keydown", (e) => {
     );
   }
 
-  // === DOLLHOUSE ===
+    // ✅ Admin-only dollhouse view tools (prevents visitors from changing saved data)
+  if (mode === "dollhouse" && isAdminMode()) {
+    // Press P → save current dollhouse camera/orbit as default return view
+    if (key === "p") {
+      saveDefaultDollViewNow();
+      console.log("✅ Dollhouse default view saved (admin)");
+    }
 
-  // Press P → save current dollhouse camera/orbit as default return view
-  if (key === "p" && mode === "dollhouse") {
-    saveDefaultDollViewNow();
-    console.log("✅ Dollhouse default view saved");
+    // Press O → clear saved default (localStorage only; does not affect tour.json)
+    if (key === "o") {
+      localStorage.removeItem(DOLL_DEFAULT_VIEW_STORAGE_KEY);
+      defaultDollView = null;
+      framedOnce = false;
+      console.log("🗑️ Cleared saved dollhouse default view (admin)");
+    }
   }
-
-  // Press O → clear saved default (so next time it will re-frame and then you can press P again)
-if (key === "o" && mode === "dollhouse") {
-  localStorage.removeItem(DOLL_DEFAULT_VIEW_STORAGE_KEY);
-  defaultDollView = null;
-  framedOnce = false;
-  console.log("🗑️ Cleared saved dollhouse default view");
-}
 });
 // -----------------------------
 // Dollhouse: multi-model loading + “act like one model” switching
@@ -1900,26 +1906,34 @@ if (!framedOnce) {
   // Make sure FULL exists (used for framing reference and consistent bounds)
   await loadDollModel("full").catch(() => {});
 
-  // ✅ 1) Load saved default FIRST
-  const saved = loadSavedDefaultDollView();
-  if (saved) {
-    defaultDollView = saved;
+  // ✅ 1) If tour.json provided a default, use it (do NOT override)
+  if (defaultDollView) {
     restoreOrbitView(defaultDollView);
     applyReferenceClippingAndLimits();
   } else {
-    // ✅ 2) No saved view yet → frame camera and set that as default
-    frameCameraToObject(dollCamera, orbit, dollCache.get("full").root, 0.7);
-    applyReferenceClippingAndLimits();
+    // ✅ 2) Otherwise use saved localStorage (dev/admin workflow)
+    const saved = loadSavedDefaultDollView();
+    if (saved) {
+      defaultDollView = saved;
+      restoreOrbitView(defaultDollView);
+      applyReferenceClippingAndLimits();
+    } else {
+      // ✅ 3) Otherwise compute one by framing and set as default
+      frameCameraToObject(dollCamera, orbit, dollCache.get("full").root, 0.7);
+      applyReferenceClippingAndLimits();
 
-    defaultDollView = saveOrbitView();
+      defaultDollView = saveOrbitView();
 
-    // Optional but recommended: auto-save the initial computed default too
-    try {
-      localStorage.setItem(
-        DOLL_DEFAULT_VIEW_STORAGE_KEY,
-        JSON.stringify(serializeOrbitView(defaultDollView))
-      );
-    } catch {}
+      // ✅ Only auto-save if admin mode (prevents visitors writing to localStorage)
+      if (isAdminMode()) {
+        try {
+          localStorage.setItem(
+            DOLL_DEFAULT_VIEW_STORAGE_KEY,
+            JSON.stringify(serializeOrbitView(defaultDollView))
+          );
+        } catch {}
+      }
+    }
   }
 }
     await fadeOverlayTo(0, 150);
@@ -1946,6 +1960,34 @@ async function init() {
   HERO = TOUR.hero || [];
 // 3b) ROOMS from tour.json (optional)
 ROOMS = Array.isArray(TOUR.rooms) ? TOUR.rooms : [];
+// ✅ Permanent dollhouse default view from tour.json (wins over localStorage)
+if (TOUR.dollDefaultView && TOUR.dollDefaultView.camPos && TOUR.dollDefaultView.camQuat && TOUR.dollDefaultView.target) {
+  try {
+    defaultDollView = {
+      camPos: new THREE.Vector3().fromArray(TOUR.dollDefaultView.camPos),
+      camQuat: new THREE.Quaternion(
+        TOUR.dollDefaultView.camQuat[0],
+        TOUR.dollDefaultView.camQuat[1],
+        TOUR.dollDefaultView.camQuat[2],
+        TOUR.dollDefaultView.camQuat[3]
+      ),
+      target: new THREE.Vector3().fromArray(TOUR.dollDefaultView.target),
+      zoom: TOUR.dollDefaultView.zoom ?? 1,
+    };
+
+    // Optional: seed localStorage only in admin mode (never let normal visitors write)
+    if (isAdminMode()) {
+      try {
+        localStorage.setItem(
+          DOLL_DEFAULT_VIEW_STORAGE_KEY,
+          JSON.stringify(serializeOrbitView(defaultDollView))
+        );
+      } catch {}
+    }
+  } catch (e) {
+    console.warn("Invalid TOUR.dollDefaultView, ignoring:", e);
+  }
+}
 
 // Optional sanity check (won't break anything)
 if (ROOMS.length && ROOMS.length !== TOUR.panoCount) {
