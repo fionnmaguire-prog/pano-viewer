@@ -2413,7 +2413,10 @@ if (btnDown) btnDown.addEventListener("click", () => switchDollhouseModel("down"
 // -----------------------------
 // Dollhouse tab click (race-safe + fade-safe)
 // -----------------------------
+
 let dollhouseEnterToken = 0;
+// Show the progress UI only on the very first time the user enters Dollhouse
+let hasShownInitialDollhouseLoader = false;
 
 tabDollhouse.addEventListener("click", async () => {
   dollhouseEnterToken++;
@@ -2435,9 +2438,17 @@ tabDollhouse.addEventListener("click", async () => {
     // 2) Switch mode
     setMode("dollhouse");
 
-    pm = beginProgressSession("Loading dollhouse…");
-    const tRef = pm.task("reference", 2.0);
-    const tModel = pm.task("model", 3.0);
+    // ✅ Only show the loader on FIRST entry to dollhouse (initial download / first-time setup)
+    const shouldShowLoader = !hasShownInitialDollhouseLoader;
+
+    let tRef = null;
+    let tModel = null;
+
+    if (shouldShowLoader) {
+      pm = beginProgressSession("Loading dollhouse…");
+      tRef = pm.task("reference", 2.0);
+      tModel = pm.task("model", 3.0);
+    }
 
     // 3) HARD guarantee: even if fadeOverlayTo got cancelled mid-flight,
     //    we are definitely black while loading.
@@ -2449,7 +2460,7 @@ tabDollhouse.addEventListener("click", async () => {
     // 4) Ensure reference is ready (bounds, refCenter, limits)
     // ensureReferenceReady may load FULL internally; show that as part of "reference"
     await ensureReferenceReady();
-    tRef.done();
+    if (tRef) tRef.done();
     if (!stillValid()) { if (pm) pm.finish(); return; }
 
     // 5) If returning from pano, let reset pick correct model first
@@ -2487,7 +2498,7 @@ tabDollhouse.addEventListener("click", async () => {
       }
 
       // The reset animation is visual; once reference is ready, treat "loading" as complete.
-      tModel.done();
+      if (tModel) tModel.done();
       const resetPromise = resetDollhouseFromCurrentPano(true);
 
       // Reveal immediately so user sees *something* while the reset anim runs
@@ -2500,15 +2511,21 @@ tabDollhouse.addEventListener("click", async () => {
 
       // Final hard guarantee (never stuck black)
       fadeOverlay.style.opacity = "0";
-      if (pm) pm.finish();
+      if (pm) {
+        hasShownInitialDollhouseLoader = true;
+        pm.finish();
+      }
       return;
     }
 
     // 6) Otherwise load whatever the user last selected
     setDollButtonsActive(activeDollKey);
 
-    const root = await loadDollModel(activeDollKey, (p) => tModel.update(p));
-    tModel.done();
+    const root = await loadDollModel(
+      activeDollKey,
+      tModel ? (p) => tModel.update(p) : null
+    );
+    if (tModel) tModel.done();
     if (!stillValid()) { if (pm) pm.finish(); return; }
 
     alignModelToReference(activeDollKey);
@@ -2554,7 +2571,10 @@ tabDollhouse.addEventListener("click", async () => {
 
     // Final hard guarantee
     fadeOverlay.style.opacity = "0";
-    if (pm) pm.finish();
+    if (pm) {
+      hasShownInitialDollhouseLoader = true;
+      pm.finish();
+    }
   } catch (e) {
     console.error("Failed to load dollhouse GLB:", e);
     if (pm) pm.cancel();
