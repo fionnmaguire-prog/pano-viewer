@@ -1812,21 +1812,22 @@ function restoreOrbitView(v) {
 function applyOrbitViewWithLockedPivot(v) {
   if (!v) return;
 
-  // If we don't have the reference pivot yet, fall back to normal restore
   if (!refCenter) {
-    restoreOrbitView(v);
+    // fallback: restore (but even here, OrbitControls will overwrite quaternion on update)
+    orbit.target.copy(v.target);
+    dollCamera.position.copy(v.camPos);
+    dollCamera.zoom = v.zoom ?? 1;
+    dollCamera.updateProjectionMatrix();
+    orbit.update();
     return;
   }
 
-  // Preserve the camera offset relative to the saved target,
-  // but re-anchor it onto the reference pivot.
   const savedTarget = v.target?.clone?.() || orbit.target.clone();
   const offset = v.camPos.clone().sub(savedTarget);
 
   orbit.target.copy(refCenter);
   dollCamera.position.copy(refCenter.clone().add(offset));
-  dollCamera.quaternion.copy(v.camQuat);
-  dollCamera.zoom = v.zoom;
+  dollCamera.zoom = v.zoom ?? 1;
 
   dollCamera.updateProjectionMatrix();
   orbit.update();
@@ -1838,51 +1839,47 @@ function animateToOrbitView(
   v,
   durationMs = 450,
   {
-    rotateYawDelta = 0, // radians (+/-)
-    rotateStartAt = 0.0,
-    rotateEndAt = 1.0,
+    spinRad = 0,     // e.g. Math.PI*2 for a full spin, ends in same place
+    useShortest = true, // true for normal returns
   } = {}
 ) {
   if (!v) return Promise.resolve();
   if (!refCenter) {
-    // fallback: no reference pivot yet
-    restoreOrbitView(v);
+    applyOrbitViewWithLockedPivot(v);
     return Promise.resolve();
   }
 
-  // Temporarily disable damping so OrbitControls doesn't "keep moving"
   const prevDamping = orbit.enableDamping;
   orbit.enableDamping = false;
 
-  // Pivot is ALWAYS refCenter
   const pivot = refCenter.clone();
 
   // Start + end offsets relative to pivot
   const startOffset = dollCamera.position.clone().sub(pivot);
-  const endOffset = v.camPos.clone().sub(pivot);
+  const endOffset   = v.camPos.clone().sub(pivot);
 
   const startSph = new THREE.Spherical().setFromVector3(startOffset);
-  const endSph = new THREE.Spherical().setFromVector3(endOffset);
+  const endSph   = new THREE.Spherical().setFromVector3(endOffset);
 
-  // We'll interpolate radius + phi, and handle theta with optional rotation
   const startR = startSph.radius;
   const startPhi = startSph.phi;
   const startTheta = startSph.theta;
 
   const endR = endSph.radius;
   const endPhi = endSph.phi;
-
-  // Base target theta is the default view theta
-  const baseEndTheta = endSph.theta;
+  const endThetaBase = endSph.theta;
 
   // Zoom
   const startZoom = dollCamera.zoom;
   const endZoom = v.zoom ?? 1;
 
-  // Helper: smoothstep
   const smooth = (t) => t * t * (3 - 2 * t);
-
   const start = performance.now();
+
+  // Choose theta delta
+  const thetaDelta =
+    (useShortest ? shortestAngleDelta(startTheta, endThetaBase) : (endThetaBase - startTheta))
+    + (spinRad || 0);
 
   return new Promise((resolve) => {
     function tick() {
@@ -1890,23 +1887,11 @@ function animateToOrbitView(
       const u = Math.min(1, Math.max(0, uRaw));
       const e = smooth(u);
 
-      // Always lock pivot
       orbit.target.copy(pivot);
 
-      // Interpolate radius + phi
       const r = startR + (endR - startR) * e;
       const phi = startPhi + (endPhi - startPhi) * e;
-
-      // Theta: interpolate from the *current* theta toward the default theta,
-      // and optionally add rotateYawDelta over a window (rotateStartAt..rotateEndAt).
-      let theta = startTheta + shortestAngleDelta(startTheta, baseEndTheta) * e;
-
-      if (rotateYawDelta !== 0) {
-        const w = Math.max(1e-6, rotateEndAt - rotateStartAt);
-        const rt = Math.min(1, Math.max(0, (u - rotateStartAt) / w));
-        const re = smooth(rt);
-        theta += rotateYawDelta * re;
-      }
+      const theta = startTheta + thetaDelta * e;
 
       const sph = new THREE.Spherical(r, phi, theta);
       const newPos = new THREE.Vector3().setFromSpherical(sph).add(pivot);
@@ -1914,12 +1899,19 @@ function animateToOrbitView(
       dollCamera.position.copy(newPos);
       dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
       dollCamera.updateProjectionMatrix();
-
       orbit.update();
 
       if (u >= 1) {
-        // Hard snap to ensure EXACT final orientation every time
-        applyOrbitViewWithLockedPivot(v);
+        // Set exact end state (no snap because it matches the trajectory)
+        const finalTheta = startTheta + thetaDelta; // = endThetaBase (+ spinRad)
+        const finalSph = new THREE.Spherical(endR, endPhi, finalTheta);
+        dollCamera.position.copy(
+          new THREE.Vector3().setFromSpherical(finalSph).add(pivot)
+        );
+        dollCamera.zoom = endZoom;
+        dollCamera.updateProjectionMatrix();
+        orbit.target.copy(pivot);
+        orbit.update();
 
         orbit.enableDamping = prevDamping;
         resolve();
@@ -1942,14 +1934,12 @@ async function resetDollhouseView(animated = true) {
     const shouldFullSpin = Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
     const rotateDelta = shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : panoDeltaRaw;
 
-    await animateToOrbitView(defaultDollView, 1400, {
-      rotateYawDelta: rotateDelta,
-      rotateStartAt: 0.0,
-      rotateEndAt: 1.0,
-    });
-applyOrbitViewWithLockedPivot(defaultDollView);
+    await animateToOrbitView(defaultDollView, durationMs, {
+  spinRad: shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : 0,
+  useShortest: true,
+});
   } else {
-    applyOrbitViewWithLockedPivot(defaultDollView);
+    
   }
 }
 
