@@ -1322,22 +1322,48 @@ window.addEventListener("keydown", (e) => {
     );
   }
 
-    // ✅ Admin-only dollhouse view tools (prevents visitors from changing saved data)
-  if (mode === "dollhouse" && isAdminMode()) {
-    // Press P → save current dollhouse camera/orbit as default return view
-    if (key === "p") {
-      saveDefaultDollViewNow();
-      console.log("✅ Dollhouse default view saved (admin)");
+    // ✅ Press P in dollhouse to print a tour.json-ready default view block
+if (mode === "dollhouse") {
+  if (key === "p") {
+    // Make sure reference pivot exists so we save the true center pivot
+    if (refCenter) {
+      orbit.target.copy(refCenter);
+      orbit.update();
     }
 
-    // Press O → clear saved default (localStorage only; does not affect tour.json)
-    if (key === "o") {
-      localStorage.removeItem(DOLL_DEFAULT_VIEW_STORAGE_KEY);
-      defaultDollView = null;
-      framedOnce = false;
-      console.log("🗑️ Cleared saved dollhouse default view (admin)");
+    const v = saveOrbitView();
+
+    // Force target to refCenter in the saved view (so pivot is consistent across machines)
+    if (refCenter) {
+      const offset = v.camPos.clone().sub(v.target);
+      v.target = refCenter.clone();
+      v.camPos = refCenter.clone().add(offset);
+    }
+
+    const payload = {
+      dollDefaultView: {
+        camPos: v.camPos.toArray(),
+        camQuat: [v.camQuat.x, v.camQuat.y, v.camQuat.z, v.camQuat.w],
+        target: v.target.toArray(),
+        zoom: v.zoom,
+      },
+    };
+
+    const json = JSON.stringify(payload, null, 2);
+
+    console.log("===== COPY INTO tour.json =====");
+    console.log(json);
+    console.log("================================");
+
+    // Optional: copy to clipboard (works on https or localhost)
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(json).then(
+        () => console.log("✅ Copied dollDefaultView JSON to clipboard"),
+        () => console.log("ℹ️ Clipboard copy failed (copy from console)")
+      );
     }
   }
+}
 });
 // -----------------------------
 // Dollhouse: multi-model loading + “act like one model” switching
@@ -1812,27 +1838,49 @@ function animateToOrbitView(
   v,
   durationMs = 450,
   {
-    rotateYawDelta = 0,
+    rotateYawDelta = 0, // radians (+/-)
     rotateStartAt = 0.0,
     rotateEndAt = 1.0,
   } = {}
 ) {
-  const startPos = dollCamera.position.clone();
+  if (!v) return Promise.resolve();
+  if (!refCenter) {
+    // fallback: no reference pivot yet
+    restoreOrbitView(v);
+    return Promise.resolve();
+  }
+
+  // Temporarily disable damping so OrbitControls doesn't "keep moving"
+  const prevDamping = orbit.enableDamping;
+  orbit.enableDamping = false;
+
+  // Pivot is ALWAYS refCenter
+  const pivot = refCenter.clone();
+
+  // Start + end offsets relative to pivot
+  const startOffset = dollCamera.position.clone().sub(pivot);
+  const endOffset = v.camPos.clone().sub(pivot);
+
+  const startSph = new THREE.Spherical().setFromVector3(startOffset);
+  const endSph = new THREE.Spherical().setFromVector3(endOffset);
+
+  // We'll interpolate radius + phi, and handle theta with optional rotation
+  const startR = startSph.radius;
+  const startPhi = startSph.phi;
+  const startTheta = startSph.theta;
+
+  const endR = endSph.radius;
+  const endPhi = endSph.phi;
+
+  // Base target theta is the default view theta
+  const baseEndTheta = endSph.theta;
+
+  // Zoom
   const startZoom = dollCamera.zoom;
+  const endZoom = v.zoom ?? 1;
 
-  // ✅ Pivot is always refCenter (when available)
-  const pivot = refCenter ? refCenter.clone() : orbit.target.clone();
-
-  // Convert the saved view into an offset-from-pivot target view
-  const savedTarget = v.target.clone();
-  const savedOffset = v.camPos.clone().sub(savedTarget);
-
-  const endPos = pivot.clone().add(savedOffset);
-  const endZoom = v.zoom;
-
-  // Theta around pivot
-  const startTheta = getOrbitThetaAroundTarget(pivot);
-  const endTheta = startTheta + rotateYawDelta;
+  // Helper: smoothstep
+  const smooth = (t) => t * t * (3 - 2 * t);
 
   const start = performance.now();
 
@@ -1840,30 +1888,47 @@ function animateToOrbitView(
     function tick() {
       const uRaw = (performance.now() - start) / durationMs;
       const u = Math.min(1, Math.max(0, uRaw));
-      const e = u * u * (3 - 2 * u);
+      const e = smooth(u);
 
-      // ✅ Hard lock pivot every frame
+      // Always lock pivot
       orbit.target.copy(pivot);
 
-      dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
-      dollCamera.position.lerpVectors(startPos, endPos, e);
+      // Interpolate radius + phi
+      const r = startR + (endR - startR) * e;
+      const phi = startPhi + (endPhi - startPhi) * e;
 
-      // Optional yaw rotation during the move (also around pivot)
+      // Theta: interpolate from the *current* theta toward the default theta,
+      // and optionally add rotateYawDelta over a window (rotateStartAt..rotateEndAt).
+      let theta = startTheta + shortestAngleDelta(startTheta, baseEndTheta) * e;
+
       if (rotateYawDelta !== 0) {
         const w = Math.max(1e-6, rotateEndAt - rotateStartAt);
         const rt = Math.min(1, Math.max(0, (u - rotateStartAt) / w));
-        const re = rt * rt * (3 - 2 * rt);
-
-        const thetaNow = startTheta + (endTheta - startTheta) * re;
-        setOrbitThetaAroundTarget(pivot, thetaNow);
+        const re = smooth(rt);
+        theta += rotateYawDelta * re;
       }
 
+      const sph = new THREE.Spherical(r, phi, theta);
+      const newPos = new THREE.Vector3().setFromSpherical(sph).add(pivot);
+
+      dollCamera.position.copy(newPos);
+      dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
       dollCamera.updateProjectionMatrix();
+
       orbit.update();
 
-      if (u >= 1) resolve();
-      else requestAnimationFrame(tick);
+      if (u >= 1) {
+        // Hard snap to ensure EXACT final orientation every time
+        applyOrbitViewWithLockedPivot(v);
+
+        orbit.enableDamping = prevDamping;
+        resolve();
+        return;
+      }
+
+      requestAnimationFrame(tick);
     }
+
     requestAnimationFrame(tick);
   });
 }
@@ -1882,6 +1947,7 @@ async function resetDollhouseView(animated = true) {
       rotateStartAt: 0.0,
       rotateEndAt: 1.0,
     });
+applyOrbitViewWithLockedPivot(defaultDollView);
   } else {
     applyOrbitViewWithLockedPivot(defaultDollView);
   }
@@ -2062,15 +2128,7 @@ if (TOUR.dollDefaultView && TOUR.dollDefaultView.camPos && TOUR.dollDefaultView.
       zoom: TOUR.dollDefaultView.zoom ?? 1,
     };
 
-    // Optional: seed localStorage only in admin mode (never let normal visitors write)
-    if (isAdminMode()) {
-      try {
-        localStorage.setItem(
-          DOLL_DEFAULT_VIEW_STORAGE_KEY,
-          JSON.stringify(serializeOrbitView(defaultDollView))
-        );
-      } catch {}
-    }
+    
   } catch (e) {
     console.warn("Invalid TOUR.dollDefaultView, ignoring:", e);
   }
