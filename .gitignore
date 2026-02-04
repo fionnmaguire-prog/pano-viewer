@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+
+# DO NOT commit tours/media
+public/tours
+public/**/*.mp4
+public/**/*.mov
+public/**/*.png
+public/**/*.jpg
+public/**/*.jpeg
+public/**/*.webp
+public/**/*.glb
