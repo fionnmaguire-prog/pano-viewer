@@ -837,6 +837,26 @@ async function jumpToPano(index) {
 async function preloadStartAssets() {
   // Preload pano 0 (required)
   await ensurePanoLoaded(0);
+// Preload dollhouse GLBs in background (so first Dollhouse click is instant)
+loadDollModel("down")
+  .then((root) => {
+    ensureReferenceReady().then(() => {
+      // render one frame offscreen-ish to force shader compile
+      const prevMode = mode;
+      const prevBg = dollScene.background;
+      dollScene.background = new THREE.Color(0x000000);
+
+      // render once
+      renderer.render(dollScene, dollCamera);
+
+      dollScene.background = prevBg;
+      mode = prevMode;
+    });
+  })
+  .catch(() => {});
+loadDollModel("full").catch(() => {});
+loadDollModel("up").catch(() => {});
+
 
   // Kick off pano 1 in background (optional)
   ensurePanoLoaded(1).catch(() => {});
