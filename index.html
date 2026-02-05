@@ -29,6 +29,16 @@
         --tab-active-bg: rgba(255, 255, 255, 0.92);
         --tab-active-bg-hover: rgba(255, 255, 255, 0.98);
         --tab-active-text: rgba(0, 0, 0, 0.90);
+
+        /* ===== Button system (NEW) =====
+           We’ll use CSS variables on each button to control:
+           - background color
+           - text color
+           - inner stroke color
+           and invert them on hover.
+        */
+        --btn-radius: 16px;
+        --btn-inner-stroke: 2px; /* thickness of the inner ring */
       }
 
       html,
@@ -45,7 +55,7 @@
       body {
         display: grid;
         place-items: center;
-        padding: 10px; /* was 10px 8px */
+        padding: 10px;
         background: radial-gradient(
             80% 80% at 50% 35%,
             rgba(255, 255, 255, 0.06),
@@ -75,7 +85,7 @@
 
       @media (max-width: 820px) {
         body {
-          padding: 8px; /* still even on all sides */
+          padding: 8px;
         }
 
         #app {
@@ -126,7 +136,6 @@
           0 8px 20px rgba(0,0,0,0.25),
           inset 0 1px 0 rgba(255,255,255,0.04);
 
-        /* inactive slightly smaller */
         transform: scale(0.94);
         transform-origin: left center;
 
@@ -152,8 +161,6 @@
       .tabBtn.active {
         background: var(--tab-active-bg);
         color: var(--tab-active-text);
-
-        /* active slightly bigger */
         transform: scale(1.03);
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
@@ -237,6 +244,84 @@
       }
 
       /* =============================
+         BUTTON BASE (NEW)
+         - inner stroke via ::after
+         - hover inverts bg/text/stroke
+      ============================== */
+
+      .uiBtn {
+        appearance: none;
+        cursor: pointer;
+        border: 1px solid rgba(0,0,0,0.10);
+
+        height: 52px;
+        padding: 0 18px;
+        border-radius: var(--btn-radius);
+
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+
+        /* button-local theme variables */
+        background: var(--btn-bg);
+        color: var(--btn-text);
+
+        box-shadow:
+          0 8px 22px rgba(0,0,0,0.35),
+          inset 0 1px 0 rgba(255,255,255,0.05);
+
+        position: relative;
+        isolation: isolate;
+
+        transition:
+          transform 120ms ease,
+          box-shadow 120ms ease,
+          background 120ms ease,
+          color 120ms ease;
+      }
+
+      /* inner stroke */
+      .uiBtn::after {
+        content: "";
+        position: absolute;
+        inset: 6px; /* space from edge */
+        border-radius: calc(var(--btn-radius) - 6px);
+        border: var(--btn-inner-stroke) solid var(--btn-stroke);
+        pointer-events: none;
+        transition: border-color 120ms ease;
+      }
+
+      .uiBtn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow:
+          0 14px 34px rgba(0,0,0,0.55),
+          inset 0 1px 0 rgba(255,255,255,0.08);
+
+        /* invert */
+        background: var(--btn-bg-hover);
+        color: var(--btn-text-hover);
+      }
+
+      .uiBtn:hover:not(:disabled)::after {
+        border-color: var(--btn-stroke-hover);
+      }
+
+      .uiBtn:active:not(:disabled) {
+        transform: translateY(0);
+        box-shadow:
+          0 6px 16px rgba(0,0,0,0.35),
+          inset 0 1px 0 rgba(255,255,255,0.05);
+      }
+
+      .uiBtn:disabled {
+        opacity: 0.45;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      /* =============================
          NAVIGATION
       ============================== */
 
@@ -281,56 +366,74 @@
         gap: 12px;
       }
 
-      /* BACK/NEXT remain slightly larger */
+      /* BACK/NEXT: black button, white text (as before) */
       #nav button {
-        appearance: none;
-        cursor: pointer;
-
-        border: 1px solid rgba(255,255,255,0.15);
-        height: 58px;
+        height: 58px;   /* slightly larger than other UI */
         padding: 0 22px;
+        font-size: 14px;
+        letter-spacing: 0.14em;
+
+        /* theme for .uiBtn */
+        --btn-bg: rgba(0, 0, 0, 0.85);
+        --btn-text: rgba(255, 255, 255, 0.95);
+        --btn-stroke: rgba(255, 255, 255, 0.95);
+
+        /* hover invert */
+        --btn-bg-hover: rgba(255, 255, 255, 0.95);
+        --btn-text-hover: rgba(0, 0, 0, 0.90);
+        --btn-stroke-hover: rgba(0, 0, 0, 0.90);
+      }
+
+      /* =============================
+         DOLLHOUSE SUB BUTTONS (FULL / UP / DOWN)
+      ============================== */
+
+      #dollBtns {
+        position: absolute;
+        right: 14px;
+        bottom: calc(var(--ui-safe-bottom) + 78px); /* above BACK/NEXT */
+        z-index: 12;
+
+        display: inline-flex;
+        gap: 12px;
+
+        padding: 10px;
         border-radius: 16px;
 
-        font-size: 14px;
-        font-weight: 800;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-
-        background: var(--nav-bg);
-        color: var(--nav-text);
-
-        box-shadow:
-          0 8px 22px rgba(0,0,0,0.45),
-          inset 0 1px 0 rgba(255,255,255,0.05);
-
-        transition:
-          transform 120ms ease,
-          box-shadow 120ms ease,
-          background 120ms ease;
+        background: rgba(0, 0, 0, 0.38);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.10);
       }
 
-      #nav button:hover:not(:disabled) {
-        background: var(--nav-bg-hover);
-        transform: translateY(-1px);
-        box-shadow:
-          0 14px 34px rgba(0,0,0,0.65),
-          inset 0 1px 0 rgba(255,255,255,0.08);
+      #dollBtns.hidden {
+        display: none;
       }
 
-      #nav button:active:not(:disabled) {
-        transform: translateY(0);
-        box-shadow:
-          0 6px 16px rgba(0,0,0,0.45),
-          inset 0 1px 0 rgba(255,255,255,0.05);
+      /* Dollhouse buttons: inverted to BACK/NEXT (white button, black text) */
+      .dollBtn {
+        height: 52px;
+        padding: 0 18px;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+
+        /* theme for .uiBtn */
+        --btn-bg: rgba(255, 255, 255, 0.92);
+        --btn-text: rgba(0, 0, 0, 0.90);
+        --btn-stroke: rgba(0, 0, 0, 0.90);
+
+        /* hover invert */
+        --btn-bg-hover: rgba(0, 0, 0, 0.92);
+        --btn-text-hover: rgba(255, 255, 255, 0.95);
+        --btn-stroke-hover: rgba(255, 255, 255, 0.95);
       }
 
-      #nav button:disabled {
-        color: var(--nav-disabled);
-        border-color: rgba(255,255,255,0.08);
-        cursor: default;
-        transform: none;
-        box-shadow: none;
-        background: rgba(0,0,0,0.6);
+      /* Optional: show which Dollhouse sub-mode is selected
+         (keeps the same look but makes it feel "locked in") */
+      .dollBtn.active {
+        box-shadow:
+          0 12px 28px rgba(0,0,0,0.38),
+          inset 0 1px 0 rgba(255,255,255,0.10);
       }
 
       /* =============================
@@ -378,13 +481,14 @@
         padding: 14px 20px;
         border-radius: 16px;
         font-size: 15px;
-        font-weight: 750;
+        font-weight: 800;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
 
         background: rgba(255,255,255,0.92);
         color: rgba(0,0,0,0.9);
         box-shadow: 0 12px 30px rgba(0,0,0,0.35);
 
-        text-transform: uppercase;
         transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
       }
 
@@ -437,6 +541,13 @@
         <span id="brandText" class="hidden">rtfmediasolutions.com</span>
       </a>
 
+      <!-- ✅ Restored Dollhouse buttons -->
+      <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
+        <button id="btnFull" class="uiBtn dollBtn active" type="button">Full</button>
+        <button id="btnUp" class="uiBtn dollBtn" type="button">Up</button>
+        <button id="btnDown" class="uiBtn dollBtn" type="button">Down</button>
+      </div>
+
       <div id="startOverlay" aria-label="Begin tour overlay">
         <div id="startCard">
           <button id="startBtn" type="button">BEGIN TOUR</button>
@@ -450,8 +561,8 @@
 
       <div id="navWrap">
         <div id="nav">
-          <button id="backBtn" aria-label="Back" type="button">BACK</button>
-          <button id="forwardBtn" aria-label="Next" type="button">NEXT</button>
+          <button id="backBtn" class="uiBtn" aria-label="Back" type="button">BACK</button>
+          <button id="forwardBtn" class="uiBtn" aria-label="Next" type="button">NEXT</button>
         </div>
       </div>
     </div>
