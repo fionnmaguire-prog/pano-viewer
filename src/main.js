@@ -1657,13 +1657,24 @@ function extractNodes(root) {
     o.userData.panoIndex = idx - 1;
 
     // Give it a visible-ish material treatment (if you are using dedicated node meshes)
-    // If these are “real geometry” and you don't want them tinted, remove this block.
+    // IMPORTANT: Clone materials so each node has independent hover state.
+    // GLTF often reuses the same material instance across many meshes.
+    if (o.material) {
+      if (Array.isArray(o.material)) {
+        o.material = o.material.map((m) => (m && m.clone ? m.clone() : m));
+      } else if (o.material.clone) {
+        o.material = o.material.clone();
+      }
+    }
+
+    // Apply our node look only to Standard materials
     if (o.material && o.material.isMeshStandardMaterial) {
       o.material.color = NODE_BASE_COLOR.clone();
       o.material.emissive = NODE_BASE_EMISSIVE.clone();
       o.material.emissiveIntensity = NODE_BASE_EMISSIVE_INT;
       o.material.roughness = 0.35;
       o.material.metalness = 0.0;
+      o.material.needsUpdate = true;
     }
 
     nodes.push(o);
@@ -1835,10 +1846,17 @@ function raycastNodes(e) {
 }
 
 function updateNodeHover(dt) {
+  const speed = 10;
+  const activeSet = new Set(activeNodeMeshes || []);
+
   for (const [mesh, s] of nodeHoverState.entries()) {
-    // if mesh not in active list, skip anim
-    // (don’t delete from map, because models switch)
-    const speed = 10;
+    // Only animate nodes that are in the currently active dollhouse model.
+    // Cached nodes from other models should be forced back to base state.
+    const isActive = activeSet.has(mesh);
+    if (!isActive) {
+      s.target = 0;
+    }
+
     s.hover += (s.target - s.hover) * Math.min(1, dt * speed);
 
     // apply visual
@@ -1846,7 +1864,8 @@ function updateNodeHover(dt) {
       mesh.material.color.copy(NODE_BASE_COLOR).lerp(NODE_HOVER_COLOR, s.hover);
       mesh.material.emissive.copy(NODE_BASE_EMISSIVE).lerp(NODE_HOVER_EMISSIVE, s.hover);
       mesh.material.emissiveIntensity =
-        NODE_BASE_EMISSIVE_INT + (NODE_HOVER_EMISSIVE_INT - NODE_BASE_EMISSIVE_INT) * s.hover;
+        NODE_BASE_EMISSIVE_INT +
+        (NODE_HOVER_EMISSIVE_INT - NODE_BASE_EMISSIVE_INT) * s.hover;
       mesh.material.needsUpdate = true;
     }
 
