@@ -1647,7 +1647,8 @@ function extractNodes(root) {
     if (!o.isMesh) return;
     const name = (o.name || "").toUpperCase();
     // Expect: NODE_01, NODE_02 ... (match any digits)
-    const m = name.match(/NODE[_\-\s]?(\d+)/);
+    // ONLY match exact node meshes like: NODE_01, NODE_1
+const m = name.match(/^NODE_(\d+)$/);
     if (!m) return;
 
     const idx = parseInt(m[1], 10);
