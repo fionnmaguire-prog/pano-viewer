@@ -1395,11 +1395,18 @@ function smoothstep(t) {
 
 // Animate camera position (+ optional yaw rotation around the pivot) back to a saved view.
 // rotateYawDelta rotates around refCenter during the animation (radians).
-async function animateToOrbitView(v, durationMs = 450, {
-  rotateYawDelta = 0,
-  rotateStartAt = 0.0,
-  rotateEndAt = 1.0,
-} = {}) {
+// If lockTheta=true, we DO NOT also interpolate toward the end theta automatically.
+// This prevents “double-rotation” (which was causing the random-looking orientation when returning).
+async function animateToOrbitView(
+  v,
+  durationMs = 450,
+  {
+    rotateYawDelta = 0,
+    rotateStartAt = 0.0,
+    rotateEndAt = 1.0,
+    lockTheta = false,
+  } = {}
+) {
   if (!v) return;
   if (!refCenter) {
     applyOrbitViewWithLockedPivot(v);
@@ -1429,8 +1436,9 @@ async function animateToOrbitView(v, durationMs = 450, {
   const startZoom = dollCamera.zoom;
   const endZoom = v.zoom ?? 1;
 
-  // Use shortest path for base theta move
-  const baseThetaDelta = shortestAngleDelta(startTheta, endThetaBase);
+  // Base theta interpolation (optional). When lockTheta=true we keep theta steady
+  // and ONLY apply the extra rotation you pass in via rotateYawDelta.
+  const baseThetaDelta = lockTheta ? 0 : shortestAngleDelta(startTheta, endThetaBase);
 
   const start = performance.now();
 
@@ -1442,7 +1450,7 @@ async function animateToOrbitView(v, durationMs = 450, {
 
       orbit.target.copy(pivot);
 
-      // base movement
+      // base movement (radius + phi)
       const r = startR + (endR - startR) * e;
       const phi = startPhi + (endPhi - startPhi) * e;
 
@@ -1549,12 +1557,23 @@ async function resetDollhouseFromCurrentPano(animated = true) {
   // cancel any in-progress node zoom
   nodeZoomToken++;
 
+  // --- Compute how far the user turned away from the HERO yaw in pano ---
   const panoDeltaRaw =
     getPanoLookDeltaForIndex(state.index) * PANO_TO_DOLL_GAIN * PANO_TO_DOLL_SIGN;
 
+  // If user didn’t rotate in pano, do a full spin on return (purely aesthetic)
   const shouldFullSpin = Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
-  const panoDelta = panoDeltaRaw;
-  const rotateBackDelta = shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : -panoDelta;
+
+  // We want to end EXACTLY at the default dollhouse orientation.
+  // To do that reliably (without double-rotation), we:
+  //  1) Set the starting theta to (defaultTheta + panoDeltaRaw)
+  //  2) Animate OUT to the default view while rotating theta back to defaultTheta
+  //     using lockTheta=true (so the animation doesn’t also auto-interp theta).
+
+  // Theta of the DEFAULT view around the locked pivot
+  const endTheta = new THREE.Spherical().setFromVector3(
+    defaultDollView.camPos.clone().sub(refCenter)
+  ).theta;
 
   // pick model that actually contains the node
   let node = null;
@@ -1564,24 +1583,28 @@ async function resetDollhouseFromCurrentPano(animated = true) {
     console.warn("ensureBestModelHasNode failed:", e);
   }
 
-  // 1) start near the node
+  // 1) start near the node (or fall back to default)
   if (node) snapOrbitToNode(node, 0.10);
   else applyOrbitViewWithLockedPivot(defaultDollView);
 
-  // 2) apply pano yaw immediately so start view faces same direction
-  if (panoDelta !== 0) {
-    const theta = getOrbitThetaAroundTarget(orbit.target);
-    setOrbitThetaAroundTarget(orbit.target, theta + panoDelta);
-    orbit.update();
-  }
+  // 2) force a deterministic start theta that matches pano look direction
+  const startTheta = endTheta + panoDeltaRaw;
+  setOrbitThetaAroundTarget(orbit.target, startTheta);
+  orbit.update();
 
-  // 3) zoom out to default while rotating back
+  // 3) rotate back to default theta while zooming/settling to the default view
   if (animated) {
     const durationMs = shouldFullSpin ? RETURN_ROTATE_MS_FULLSPIN : RETURN_ROTATE_MS_NORMAL;
+
+    // shortest path from start -> end, plus optional full spin (2π doesn’t change final orientation)
+    let rotateYawDeltaToEnd = shortestAngleDelta(startTheta, endTheta);
+    if (shouldFullSpin) rotateYawDeltaToEnd += FULL_SPIN_RAD * FULL_SPIN_SIGN;
+
     await animateToOrbitView(defaultDollView, durationMs, {
-      rotateYawDelta: rotateBackDelta,
+      rotateYawDelta: rotateYawDeltaToEnd,
       rotateStartAt: 0.15,
       rotateEndAt: 1.0,
+      lockTheta: true,
     });
   } else {
     applyOrbitViewWithLockedPivot(defaultDollView);
