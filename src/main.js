@@ -33,6 +33,7 @@ const UI_FADE_DELAY_MS = 140; // small delay after content is visible
 const UI_FADE_MS = 180;       // fade duration
 
 const __uiTimers = new WeakMap();
+let __uiEpoch = 0; // increments on every mode switch
 
 function __afterNextPaint(fn) {
   requestAnimationFrame(() => requestAnimationFrame(fn));
@@ -67,6 +68,8 @@ function uiShowAfter(el, { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS, disp
     __uiTimers.delete(el);
   }
 
+  const epochAtSchedule = __uiEpoch;
+
   el.classList.remove("hidden");
   if (display) el.style.display = display;
 
@@ -75,6 +78,9 @@ function uiShowAfter(el, { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS, disp
   el.style.pointerEvents = "none";
 
   const id = setTimeout(() => {
+    // ✅ if we switched mode since scheduling, do nothing
+    if (epochAtSchedule !== __uiEpoch) return;
+
     el.style.opacity = "1";
     el.style.pointerEvents = "auto";
     __uiTimers.delete(el);
@@ -82,13 +88,17 @@ function uiShowAfter(el, { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS, disp
 
   __uiTimers.set(el, id);
 }
-
 function uiShowGroupAfter(els, opts) {
   for (const el of els) uiShowAfter(el, opts);
 }
 
 function revealPanoUIWhenReady() {
+  const epochAtCall = __uiEpoch;
+
   __afterNextPaint(() => {
+    if (epochAtCall !== __uiEpoch) return;
+    if (mode !== "pano") return;
+
     uiShowGroupAfter([navWrap].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
 
     if (indicator) {
@@ -99,7 +109,12 @@ function revealPanoUIWhenReady() {
 }
 
 function revealDollUIWhenReady() {
+  const epochAtCall = __uiEpoch;
+
   __afterNextPaint(() => {
+    if (epochAtCall !== __uiEpoch) return;
+    if (mode !== "dollhouse") return;
+
     uiShowGroupAfter([dollBtns].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
   });
 }
@@ -624,7 +639,6 @@ function updateIndicator(i) {
 function setUIEnabled(enabled) {
   if (backBtn) backBtn.disabled = !enabled;
   if (forwardBtn) forwardBtn.disabled = !enabled;
-  if (navWrap) navWrap.classList.toggle("hidden", !enabled);
 }
 
 // -----------------------------
@@ -633,8 +647,9 @@ function setUIEnabled(enabled) {
 let mode = "pano"; // "pano" | "dollhouse"
 
 function ensurePanoUIActive() {
+  // Enable pano controls, but do NOT force-show navWrap here.
+  // Visibility should be handled by your “reveal UI after content visible” logic.
   setUIEnabled(true);
-  if (navWrap) navWrap.classList.remove("hidden");
   isPointerDown = false;
   autoReorienting = false;
   state.isTransitioning = false;
@@ -652,16 +667,17 @@ function setMode(which) {
   }
 
   mode = which;
+__uiEpoch++; // ✅ invalidate any pending UI reveals from the previous mode
   setTabActive(which);
 
   // Hide mode UI immediately — we reveal it only AFTER the pano/GLB is visible
-if (navWrap) navWrap.classList.add("hidden");
-if (dollBtns) dollBtns.classList.add("hidden");
-if (indicator) {
-  indicator.style.display = "none";
-  indicator.style.opacity = "0";
-  indicator.style.pointerEvents = "none";
-}
+// Hide mode UI immediately — and HARD stop any pending reveals
+uiHide(navWrap, { fadeMs: 0 });
+uiHide(dollBtns, { fadeMs: 0 });
+
+// ✅ hard display toggles so buttons cannot “linger”
+if (navWrap) navWrap.style.display = which === "pano" ? "" : "none";
+if (dollBtns) dollBtns.style.display = which === "dollhouse" ? "" : "none";
 
 if (indicator) {
   indicator.style.display = "none";
