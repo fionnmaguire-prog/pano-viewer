@@ -7,7 +7,6 @@ const navWrap = document.getElementById("navWrap");
 const indicator = document.getElementById("indicator");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
-
 // -----------------------------
 // Brand link UI (top-right)
 // -----------------------------
@@ -15,7 +14,6 @@ const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
 let brandSwapTimer = null;
-
 // -----------------------------
 // Room label UI (bottom-left)
 // -----------------------------
@@ -29,8 +27,7 @@ roomLabelEl.style.borderRadius = "10px";
 roomLabelEl.style.background = "rgba(0,0,0,0.55)";
 roomLabelEl.style.backdropFilter = "blur(6px)";
 roomLabelEl.style.color = "#fff";
-roomLabelEl.style.fontFamily =
-  "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+roomLabelEl.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
 roomLabelEl.style.fontSize = "13px";
 roomLabelEl.style.fontWeight = "600";
 roomLabelEl.style.letterSpacing = "0.4px";
@@ -41,6 +38,7 @@ roomLabelEl.style.userSelect = "none";
 roomLabelEl.style.opacity = "0"; // start hidden until we set text
 
 container.appendChild(roomLabelEl);
+container.appendChild(roomLabelEl);
 
 // -----------------------------
 // "You are here" indicator animation constants
@@ -48,6 +46,7 @@ container.appendChild(roomLabelEl);
 const NODE_MARKER_BOB_HEIGHT = 0.35;   // vertical travel distance
 const NODE_MARKER_BOB_SPEED  = 2.0;    // bob speed (higher = faster)
 const NODE_MARKER_SPIN_SPEED = 0.6;    // radians per second
+
 // -----------------------------
 // Brand swap timer (logo -> text)
 // -----------------------------
@@ -523,9 +522,9 @@ const nodeHoverState = new Map(); // mesh -> { baseScale, hover, target }
 // -----------------------------
 // "You are here" marker (yellow pyramid)
 // -----------------------------
-const YOU_ARE_HERE_OFFSET_Y = 0.75;  // height above the blue node
-const YOU_ARE_HERE_BOB_AMP = 0.08;   // bob amplitude
-const YOU_ARE_HERE_BOB_SPEED = 2.2;  // bob speed
+// NOTE:
+// - We only animate the marker when we have a valid base position.
+// - We do NOT force it visible in setMode(); visibility is driven by mode + base.
 
 // 4-sided cone = pyramid-ish
 const youAreHere = new THREE.Mesh(
@@ -554,120 +553,50 @@ function hideYouAreHere() {
 }
 
 function placeYouAreHereAboveNodeMesh(nodeMesh) {
-  if (!nodeMesh) {
+  // only show when in dollhouse + we have a real node
+  if (!nodeMesh || mode !== "dollhouse") {
     hideYouAreHere();
     return;
   }
 
   const p = new THREE.Vector3();
   nodeMesh.getWorldPosition(p);
+
+  // Base position (what we bob around)
   p.y += YOU_ARE_HERE_OFFSET_Y;
 
   youAreHere.position.copy(p);
   youAreHereBasePos.copy(p);
   youAreHereHasBase = true;
-  youAreHere.visible = (mode === "dollhouse");
+  youAreHere.visible = true;
 }
 
-// Uses your existing helpers: dollCache + activeDollKey + findNodeInEntry + state.index
+// Keep marker aligned to current pano index, using the currently active doll model.
+// (Does NOT auto-switch models.)
 function syncYouAreHereToCurrentPano() {
   if (mode !== "dollhouse") {
     hideYouAreHere();
     return;
   }
 
-  // Do NOT auto-switch models here — just mark if this model has the node.
   const entry = dollCache.get(activeDollKey);
   const node = findNodeInEntry(entry, state.index);
   placeYouAreHereAboveNodeMesh(node);
 }
 
-// parse NODE_01 -> pano index 0
-function parseNodeIndex(name) {
-  const m = /^NODE_(\d+)/i.exec(name);
-  if (!m) return null;
-  return parseInt(m[1], 10) - 1;
+// Animate marker (bob + optional slow spin)
+// Safe: will do nothing unless we have a base position.
+function updateYouAreHere(dt, nowSec) {
+  if (mode !== "dollhouse") return;
+  if (!youAreHere.visible) return;
+  if (!youAreHereHasBase) return;
+
+  const bob = Math.sin(nowSec * NODE_MARKER_BOB_SPEED) * NODE_MARKER_BOB_HEIGHT;
+  youAreHere.position.y = youAreHereBasePos.y + bob;
+
+  // Optional slow spin
+  youAreHere.rotation.y += NODE_MARKER_SPIN_SPEED * dt;
 }
-
-function styleNode(mesh) {
-  // Keep it simple + consistent (doesn't depend on Blender material)
-  const mat = new THREE.MeshStandardMaterial({
-    color: NODE_BASE_COLOR.clone(),
-    emissive: NODE_BASE_EMISSIVE.clone(),
-    emissiveIntensity: NODE_BASE_EMISSIVE_INT,
-    roughness: 0.25,
-    metalness: 0.0,
-    toneMapped: true, // keep looking good with ACES
-  });
-
-  mesh.material = mat;
-
-  mesh.castShadow = false;
-  mesh.receiveShadow = false;
-  mesh.frustumCulled = false;
-
-  nodeHoverState.set(mesh, {
-    baseScale: mesh.scale.clone(),
-    hover: 0,
-    target: 0,
-  });
-}
-
-function extractNodes(root) {
-  const nodes = [];
-  root.traverse((o) => {
-    if (!o.isMesh) return;
-
-    const panoIndex = parseNodeIndex(o.name);
-    if (panoIndex === null) return;
-
-    o.userData.panoIndex = panoIndex;
-    styleNode(o);
-    nodes.push(o);
-  });
-  return nodes;
-}
-
-function updateMouseNDC(e) {
-  const rect = renderer.domElement.getBoundingClientRect();
-  mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-}
-
-function raycastNodes(e) {
-  if (mode !== "dollhouse") return null;
-  if (!activeNodeMeshes.length) return null;
-
-  updateMouseNDC(e);
-  raycaster.setFromCamera(mouseNDC, dollCamera);
-
-  const hits = raycaster.intersectObjects(activeNodeMeshes, false);
-  return hits.length ? hits[0].object : null;
-}
-
-function updateNodeHover(dt) {
-  for (const [mesh, s] of nodeHoverState) {
-    const target = s.target ?? 0;
-    s.hover += (target - s.hover) * Math.min(1, dt * 12);
-
-    // scale
-    const scale = 1 + NODE_HOVER_SCALE * s.hover;
-    mesh.scale.copy(s.baseScale).multiplyScalar(scale);
-
-    // color + emissive blend
-    const mat = mesh.material;
-    if (mat && mat.isMeshStandardMaterial) {
-      mat.color.copy(NODE_BASE_COLOR).lerp(NODE_HOVER_COLOR, s.hover);
-      mat.emissive.copy(NODE_BASE_EMISSIVE).lerp(NODE_HOVER_EMISSIVE, s.hover);
-      mat.emissiveIntensity =
-        NODE_BASE_EMISSIVE_INT +
-        (NODE_HOVER_EMISSIVE_INT - NODE_BASE_EMISSIVE_INT) * s.hover;
-
-      mat.needsUpdate = false; // not required each frame
-    }
-  }
-}
-
 // -----------------------------
 // Scenes + cameras
 // -----------------------------
@@ -819,12 +748,8 @@ if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
 
 // ✅ Hide the pano counter in dollhouse
 if (indicator) indicator.style.display = (which === "pano" ? "block" : "none");
-// Show/hide the "you are here" marker
-if (which !== "dollhouse") {
-  hideYouAreHere();
-} else {
-  youAreHere.visible = true; // position is set once the model is active
-}
+// Marker visibility is driven by mode + whether we have a valid base position.
+if (which !== "dollhouse") hideYouAreHere();
   // Controls
   orbit.enabled = (which === "dollhouse");
 
@@ -2879,7 +2804,6 @@ ro.observe(container);
 // Render loop (mode-based)
 // -----------------------------
 let lastT = performance.now();
-
 function animate() {
   requestAnimationFrame(animate);
 
@@ -2887,38 +2811,21 @@ function animate() {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
 
-  // Always enforce correct exposure/look
+  // ✅ guarantee the correct exposure every frame
   applyRenderLookForMode(mode);
 
   if (mode === "dollhouse") {
     orbit.update();
     updateNodeHover(dt);
 
-    // ✅ "You are here" pyramid animation
-    if (youAreHere && youAreHere.visible) {
-      // Capture base position once after placement
-      if (!youAreHereHasBase) {
-        youAreHereBasePos.copy(youAreHere.position);
-        youAreHereHasBase = true;
-      }
-
-      const t = now * 0.001;
-
-      // Vertical bob
-      youAreHere.position.y =
-        youAreHereBasePos.y +
-        Math.sin(t * YOU_ARE_HERE_BOB_SPEED) * YOU_ARE_HERE_BOB_AMP;
-
-      // Slow continuous spin
-      youAreHere.rotation.y += YOU_ARE_HERE_SPIN_SPEED * dt;
-    }
+    // ✅ animate the "you are here" marker safely
+    updateYouAreHere(dt, now / 1000);
 
     renderer.render(dollScene, dollCamera);
   } else {
     renderer.render(panoScene, panoCamera);
   }
 }
-
 animate();
 init();
 
