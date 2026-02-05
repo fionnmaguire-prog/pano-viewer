@@ -38,7 +38,6 @@ roomLabelEl.style.userSelect = "none";
 roomLabelEl.style.opacity = "0"; // start hidden until we set text
 
 container.appendChild(roomLabelEl);
-container.appendChild(roomLabelEl);
 
 // -----------------------------
 // "You are here" indicator animation constants
@@ -520,6 +519,10 @@ let hoveredNode = null;
 
 const nodeHoverState = new Map(); // mesh -> { baseScale, hover, target }
 // -----------------------------
+// "You are here" marker constants
+// -----------------------------
+const YOU_ARE_HERE_OFFSET_Y = 0.75; // tweak 0.5–1.0
+// -----------------------------
 // "You are here" marker (yellow pyramid)
 // -----------------------------
 // NOTE:
@@ -580,6 +583,11 @@ function syncYouAreHereToCurrentPano() {
   }
 
   const entry = dollCache.get(activeDollKey);
+  if (!entry) {
+    hideYouAreHere();
+    return;
+  }
+
   const node = findNodeInEntry(entry, state.index);
   placeYouAreHereAboveNodeMesh(node);
 }
@@ -988,8 +996,9 @@ hideYouAreHere();
   setSphereMap(tex);
 
   state.index = index;
-  updateIndicator(index);
-  preloadNearby(index);
+updateIndicator(index);
+syncYouAreHereToCurrentPano(); // ✅ add this
+preloadNearby(index);
 
   yaw = HERO[index]?.yaw ?? 0;
   pitch = HERO[index]?.pitch ?? 0;
@@ -1693,8 +1702,9 @@ async function goTo(targetIndex) {
     setSphereMap(nextTex);
 
     state.index = to;
-    updateIndicator(state.index);
-    preloadNearby(state.index);
+updateIndicator(state.index);
+syncYouAreHereToCurrentPano(); // ✅ add this
+preloadNearby(state.index);
 
     await reorientToHero(to, 150);
     if (!stillValid()) return;
@@ -1712,8 +1722,9 @@ async function goTo(targetIndex) {
 
       setSphereMap(tex);
       state.index = to;
-      updateIndicator(state.index);
-      preloadNearby(state.index);
+updateIndicator(state.index);
+syncYouAreHereToCurrentPano(); // ✅ add this
+preloadNearby(state.index);
 
       await reorientToHero(to, 200);
       if (!stillValid()) return;
@@ -2074,10 +2085,9 @@ placeYouAreHereAboveNodeMesh(node);
     : RETURN_ROTATE_MS_NORMAL;
 
   await animateToOrbitView(defaultDollView, durationMs, {
-    rotateYawDelta: rotateBackDelta,
-    rotateStartAt: 0.15,
-    rotateEndAt: 1.0,
-  });
+  spinRad: rotateBackDelta,
+  useShortest: true,
+});
 } else {
   applyOrbitViewWithLockedPivot(defaultDollView);
 }
@@ -2416,8 +2426,8 @@ async function resetDollhouseView(animated = true) {
   useShortest: true,
 });
   } else {
-    
-  }
+  applyOrbitViewWithLockedPivot(defaultDollView);
+  applyReferenceClippingAndLimits();
 }
 
 let switching = false;
@@ -2745,8 +2755,9 @@ startBtn.addEventListener("click", async () => {
     applyYawPitch();
 
     state.index = 0;
-    updateIndicator(0);
-    preloadNearby(0);
+updateIndicator(0);
+syncYouAreHereToCurrentPano(); // ✅ add this
+preloadNearby(0);
 
     setUIEnabled(true);
     navWrap.classList.remove("hidden");
