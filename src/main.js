@@ -38,6 +38,10 @@ roomLabelEl.style.userSelect = "none";
 roomLabelEl.style.opacity = "0"; // start hidden until we set text
 
 container.appendChild(roomLabelEl);
+
+// -----------------------------
+// Brand swap timer (logo -> text)
+// -----------------------------
 function startBrandSwapTimer(delayMs = 10000) {
   // If the elements aren't present, do nothing
   if (!brandLogo || !brandText) return;
@@ -59,8 +63,19 @@ function startBrandSwapTimer(delayMs = 10000) {
   }, delayMs);
 }
 
+// -----------------------------
+// Tabs + helper (stroke only on unselected tab)
+// -----------------------------
 const tabPano = document.getElementById("tabPano");
 const tabDollhouse = document.getElementById("tabDollhouse");
+
+function syncTabStrokes() {
+  // Only the UNSELECTED tab gets the stroke
+  if (!tabPano || !tabDollhouse) return;
+
+  tabPano.classList.toggle("hasStroke", !tabPano.classList.contains("active"));
+  tabDollhouse.classList.toggle("hasStroke", !tabDollhouse.classList.contains("active"));
+}
 // -----------------------------
 // Begin Tour UI (from index.html)
 // -----------------------------
@@ -687,6 +702,9 @@ let mode = "pano"; // "pano" | "dollhouse"
 function setTabActive(which) {
   tabPano.classList.toggle("active", which === "pano");
   tabDollhouse.classList.toggle("active", which === "dollhouse");
+
+  // ✅ always keep stroke correct
+  syncTabStrokes();
 }
 
 // Centralized UI restore when entering pano (prevents “dead pano” after heavy usage)
@@ -751,6 +769,7 @@ tabPano.addEventListener("click", async () => {
   }
 
   setMode("pano");
+ 
   setRoomLabel(state.index); // ✅ restore pano label immediately when returning
 
   // Ensure pano texture is shown (and not left as a video texture / blank)
@@ -2375,7 +2394,7 @@ async function resetDollhouseView(animated = true) {
     const shouldFullSpin = Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
     const rotateDelta = shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : panoDeltaRaw;
 
-    await animateToOrbitView(defaultDollView, durationMs, {
+   await animateToOrbitView(defaultDollView, 1400, {
   spinRad: shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : 0,
   useShortest: true,
 });

@@ -33,9 +33,9 @@
         /* ===== Button system ===== */
         --btn-radius: 16px;
 
-        /* thicker inner ring + closer to edge */
-        --btn-inner-stroke: 3px; /* was 2px */
-        --btn-stroke-inset: 4px; /* was 6px (closer to outside now) */
+        /* stroke settings (only used when .hasStroke is present) */
+        --btn-inner-stroke: 3px;
+        --btn-stroke-inset: 4px;
       }
 
       html,
@@ -100,8 +100,8 @@
 
       /* =============================
          BUTTON BASE
-         - inner stroke via ::after
-         - hover inverts bg/text/stroke
+         - NO stroke by default
+         - hover inverts bg/text
       ============================== */
 
       .uiBtn {
@@ -136,10 +136,11 @@
           color 120ms ease;
       }
 
-      .uiBtn::after {
+      /* ✅ Stroke is opt-in now */
+      .uiBtn.hasStroke::after {
         content: "";
         position: absolute;
-        inset: var(--btn-stroke-inset); /* closer to edge now */
+        inset: var(--btn-stroke-inset);
         border-radius: calc(var(--btn-radius) - var(--btn-stroke-inset));
         border: var(--btn-inner-stroke) solid var(--btn-stroke);
         pointer-events: none;
@@ -156,7 +157,8 @@
         color: var(--btn-text-hover);
       }
 
-      .uiBtn:hover:not(:disabled)::after {
+      /* only relevant if stroke exists */
+      .uiBtn.hasStroke:hover:not(:disabled)::after {
         border-color: var(--btn-stroke-hover);
       }
 
@@ -193,24 +195,23 @@
         border: 1px solid rgba(255, 255, 255, 0.10);
       }
 
-      /* Tabs now use the same stroke system */
       .tabBtn {
-        /* uniform size based on the largest label (DOLLHOUSE) */
         min-width: 142px;
         justify-content: center;
         text-align: center;
 
-        /* theme (inactive) */
+        /* inactive theme */
         --btn-bg: var(--tab-inactive-bg);
         --btn-text: var(--tab-inactive-text);
-        --btn-stroke: var(--tab-inactive-text);
 
-        /* hover invert */
+        /* inactive hover invert */
         --btn-bg-hover: var(--tab-active-bg);
         --btn-text-hover: var(--tab-active-text);
+
+        /* stroke colors (only used if .hasStroke exists) */
+        --btn-stroke: var(--tab-inactive-text);
         --btn-stroke-hover: var(--tab-active-text);
 
-        /* smooth active/inactive sizing */
         transform: scale(0.94);
         transform-origin: left center;
 
@@ -230,15 +231,15 @@
       }
 
       .tabBtn.active {
-        /* active theme flips (light bg, dark text) */
+        /* active theme (light) */
         --btn-bg: var(--tab-active-bg);
         --btn-text: var(--tab-active-text);
-        --btn-stroke: var(--tab-active-text);
 
-        /* hover invert back to dark */
+        /* active hover invert back to dark */
         --btn-bg-hover: var(--tab-inactive-bg-hover);
         --btn-text-hover: var(--tab-inactive-text);
-        --btn-stroke-hover: var(--tab-inactive-text);
+
+        /* (no stroke for active by class usage) */
 
         transform: scale(1.03);
         box-shadow:
@@ -307,7 +308,7 @@
         display: none;
       }
 
-      /* Transition video (used for pano transitions) */
+      /* Transition video */
       #transitionVideo {
         position: absolute;
         inset: 0;
@@ -322,7 +323,7 @@
       }
 
       /* =============================
-         NAVIGATION
+         NAVIGATION (no stroke now)
       ============================== */
 
       #indicator {
@@ -364,26 +365,22 @@
         gap: 12px;
       }
 
-      /* BACK/NEXT: uniform width + stroke */
       #nav button {
         height: 58px;
         padding: 0 22px;
         font-size: 14px;
         letter-spacing: 0.14em;
-
-        min-width: 120px; /* uniform size regardless of label */
+        min-width: 120px;
 
         --btn-bg: rgba(0, 0, 0, 0.85);
         --btn-text: rgba(255, 255, 255, 0.95);
-        --btn-stroke: rgba(255, 255, 255, 0.95);
 
         --btn-bg-hover: rgba(255, 255, 255, 0.95);
         --btn-text-hover: rgba(0, 0, 0, 0.90);
-        --btn-stroke-hover: rgba(0, 0, 0, 0.90);
       }
 
       /* =============================
-         DOLLHOUSE SUB BUTTONS
+         DOLLHOUSE SUB BUTTONS (no stroke)
       ============================== */
 
       #dollBtns {
@@ -408,7 +405,6 @@
         display: none;
       }
 
-      /* uniform size based on largest label ("DOWN") */
       .dollBtn {
         min-width: 96px;
         justify-content: center;
@@ -416,11 +412,9 @@
 
         --btn-bg: rgba(255, 255, 255, 0.92);
         --btn-text: rgba(0, 0, 0, 0.90);
-        --btn-stroke: rgba(0, 0, 0, 0.90);
 
         --btn-bg-hover: rgba(0, 0, 0, 0.92);
         --btn-text-hover: rgba(255, 255, 255, 0.95);
-        --btn-stroke-hover: rgba(255, 255, 255, 0.95);
       }
 
       .dollBtn.active {
@@ -519,8 +513,10 @@
   <body>
     <div id="app">
       <div id="tabs">
+        <!-- Active has NO stroke -->
         <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
-        <button id="tabDollhouse" class="uiBtn tabBtn" type="button">DOLLHOUSE</button>
+        <!-- Inactive keeps stroke -->
+        <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
       </div>
 
       <a
