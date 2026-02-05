@@ -2441,11 +2441,6 @@ async function init() {
       async () => {
         startBtn.disabled = true;
 
-        let pm = null;
-        const pmTimer = setTimeout(() => {
-          pm = beginProgressSession("Loading tour…");
-        }, 350);
-
         startBrandSwapTimer(10000);
         if (startCard) startCard.classList.add("hidden");
         if (startOverlay) startOverlay.classList.add("videoMode");
@@ -2458,6 +2453,13 @@ async function init() {
           await playIntroVideoOnce().catch((e) => {
             console.warn("Intro video failed (continuing):", e);
           });
+
+          // Only show the loading overlay if the first pano actually takes a moment to load.
+          // This prevents a 1-frame flash of the loading bar in the black frame right after the intro.
+          let pm = null;
+          const pmTimer = setTimeout(() => {
+            pm = beginProgressSession("Loading tour…");
+          }, 220);
 
           const first = await ensurePanoLoaded(0, (p) => {
             if (!pm) return;
