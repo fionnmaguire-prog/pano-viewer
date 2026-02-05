@@ -1279,7 +1279,7 @@ function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
 // -----------------------------
 const gltfLoader = new GLTFLoader();
 const dollCache = new Map(); // key -> { root, center, size, alignedOnce, nodes }
-let activeDollKey = "full";
+let activeDollKey = "down";
 let activeDollRoot = null;
 
 const dollhouseReady = { down: false, up: false, full: false, ref: false };
@@ -1348,6 +1348,247 @@ function applyOrbitViewWithLockedPivot(v) {
 
   dollCamera.updateProjectionMatrix();
   orbit.update();
+}
+
+// -----------------------------
+// Dollhouse reset: zoom out from current pano node + orientation match
+// -----------------------------
+
+// If it rotates the wrong way relative to your pano, flip to -1
+const PANO_TO_DOLL_SIGN = 1;
+// 1 = full match, 0.5 = half as much, etc.
+const PANO_TO_DOLL_GAIN = 1.0;
+
+// If user didn't rotate in pano, do a full spin on return
+const NO_INPUT_EPS_RAD = THREE.MathUtils.degToRad(1.0);
+const FULL_SPIN_RAD = Math.PI * 2;
+const FULL_SPIN_SIGN = 1;
+
+const RETURN_ROTATE_MS_NORMAL = 1400;
+const RETURN_ROTATE_MS_FULLSPIN = 2600;
+
+function getPanoLookDeltaForIndex(i) {
+  const heroYaw = HERO[i]?.yaw ?? 0;
+  return wrapPi(yaw - heroYaw);
+}
+
+// Get orbit azimuth (theta) around a given target
+function getOrbitThetaAroundTarget(target) {
+  const offset = dollCamera.position.clone().sub(target);
+  const sph = new THREE.Spherical().setFromVector3(offset);
+  return sph.theta;
+}
+
+// Set orbit azimuth (theta) around a given target, keeping radius + phi
+function setOrbitThetaAroundTarget(target, theta) {
+  const offset = dollCamera.position.clone().sub(target);
+  const sph = new THREE.Spherical().setFromVector3(offset);
+  sph.theta = theta;
+  const newOffset = new THREE.Vector3().setFromSpherical(sph);
+  dollCamera.position.copy(target.clone().add(newOffset));
+}
+
+function smoothstep(t) {
+  t = Math.min(1, Math.max(0, t));
+  return t * t * (3 - 2 * t);
+}
+
+// Animate camera position (+ optional yaw rotation around the pivot) back to a saved view.
+// rotateYawDelta rotates around refCenter during the animation (radians).
+async function animateToOrbitView(v, durationMs = 450, {
+  rotateYawDelta = 0,
+  rotateStartAt = 0.0,
+  rotateEndAt = 1.0,
+} = {}) {
+  if (!v) return;
+  if (!refCenter) {
+    applyOrbitViewWithLockedPivot(v);
+    return;
+  }
+
+  const prevDamping = orbit.enableDamping;
+  orbit.enableDamping = false;
+
+  const pivot = refCenter.clone();
+
+  // Start + end offsets relative to pivot
+  const startOffset = dollCamera.position.clone().sub(pivot);
+  const endOffset = v.camPos.clone().sub(pivot);
+
+  const startSph = new THREE.Spherical().setFromVector3(startOffset);
+  const endSph = new THREE.Spherical().setFromVector3(endOffset);
+
+  const startR = startSph.radius;
+  const startPhi = startSph.phi;
+  const startTheta = startSph.theta;
+
+  const endR = endSph.radius;
+  const endPhi = endSph.phi;
+  const endThetaBase = endSph.theta;
+
+  const startZoom = dollCamera.zoom;
+  const endZoom = v.zoom ?? 1;
+
+  // Use shortest path for base theta move
+  const baseThetaDelta = shortestAngleDelta(startTheta, endThetaBase);
+
+  const start = performance.now();
+
+  return new Promise((resolve) => {
+    function tick() {
+      const uRaw = (performance.now() - start) / durationMs;
+      const u = Math.min(1, Math.max(0, uRaw));
+      const e = smoothstep(u);
+
+      orbit.target.copy(pivot);
+
+      // base movement
+      const r = startR + (endR - startR) * e;
+      const phi = startPhi + (endPhi - startPhi) * e;
+
+      // optional extra rotation over a portion of the anim
+      const w = Math.max(1e-6, rotateEndAt - rotateStartAt);
+      const ru = Math.min(1, Math.max(0, (u - rotateStartAt) / w));
+      const re = smoothstep(ru);
+      const extraRot = rotateYawDelta * re;
+
+      const theta = startTheta + baseThetaDelta * e + extraRot;
+
+      const sph = new THREE.Spherical(r, phi, theta);
+      const newPos = new THREE.Vector3().setFromSpherical(sph).add(pivot);
+
+      dollCamera.position.copy(newPos);
+      dollCamera.zoom = startZoom + (endZoom - startZoom) * e;
+      dollCamera.updateProjectionMatrix();
+      orbit.update();
+
+      if (u >= 1) {
+        orbit.enableDamping = prevDamping;
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+// Snap orbit to a "near node" view that still pivots around refCenter
+function snapOrbitToNode(mesh, distanceFactor = 0.10) {
+  if (!mesh || !defaultDollView || !refCenter) return;
+
+  const nodeWorld = new THREE.Vector3();
+  mesh.getWorldPosition(nodeWorld);
+
+  const defaultOffset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+  const defaultRadius = Math.max(0.15, defaultOffset.length());
+  const endRadius = Math.max(0.15, defaultRadius * distanceFactor);
+
+  const defaultDir = defaultOffset.clone().normalize();
+  const nodeDir = nodeWorld.clone().sub(refCenter);
+  if (nodeDir.lengthSq() > 1e-8) nodeDir.normalize();
+  else nodeDir.copy(defaultDir);
+
+  const dir = defaultDir.clone().lerp(nodeDir, 0.65).normalize();
+
+  orbit.target.copy(refCenter);
+  dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endRadius)));
+  dollCamera.zoom = defaultDollView.zoom ?? 1;
+  dollCamera.updateProjectionMatrix();
+  orbit.update();
+}
+
+// Prefer up/down; fall back to full if a node doesn't exist in those.
+async function chooseBestDollKeyForPano(panoIndex) {
+  // Ensure some caches exist (don’t block too hard; these are cached after first load)
+  await loadDollModel("down").catch(() => {});
+  await loadDollModel("up").catch(() => {});
+  await loadDollModel("full").catch(() => {});
+
+  const has = (key) => {
+    const entry = dollCache.get(key);
+    return !!findNodeInEntry(entry, panoIndex);
+  };
+
+  if (has("up")) return "up";
+  if (has("down")) return "down";
+  return "full";
+}
+
+async function ensureBestModelHasNode(panoIndex) {
+  const bestKey = await chooseBestDollKeyForPano(panoIndex);
+
+  if (activeDollKey !== bestKey) {
+    // Preserve current view while swapping models
+    const view = saveOrbitView();
+
+    activeDollKey = bestKey;
+    setDollButtonsActive(bestKey);
+
+    const root = await loadDollModel(bestKey);
+    alignModelToReference(bestKey);
+    setActiveDollRoot(root);
+
+    applyOrbitViewWithLockedPivot(view);
+    applyReferenceClippingAndLimits();
+  }
+
+  const entry = dollCache.get(activeDollKey);
+  return findNodeInEntry(entry, panoIndex) || null;
+}
+
+// When entering dollhouse from pano: start near current pano's node, match pano yaw, then zoom out + rotate back to default.
+async function resetDollhouseFromCurrentPano(animated = true) {
+  if (!defaultDollView) return;
+  if (!refCenter) return;
+
+  // lock pivot
+  orbit.target.copy(refCenter);
+  orbit.update();
+
+  // cancel any in-progress node zoom
+  nodeZoomToken++;
+
+  const panoDeltaRaw =
+    getPanoLookDeltaForIndex(state.index) * PANO_TO_DOLL_GAIN * PANO_TO_DOLL_SIGN;
+
+  const shouldFullSpin = Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
+  const panoDelta = panoDeltaRaw;
+  const rotateBackDelta = shouldFullSpin ? FULL_SPIN_RAD * FULL_SPIN_SIGN : -panoDelta;
+
+  // pick model that actually contains the node
+  let node = null;
+  try {
+    node = await ensureBestModelHasNode(state.index);
+  } catch (e) {
+    console.warn("ensureBestModelHasNode failed:", e);
+  }
+
+  // 1) start near the node
+  if (node) snapOrbitToNode(node, 0.10);
+  else applyOrbitViewWithLockedPivot(defaultDollView);
+
+  // 2) apply pano yaw immediately so start view faces same direction
+  if (panoDelta !== 0) {
+    const theta = getOrbitThetaAroundTarget(orbit.target);
+    setOrbitThetaAroundTarget(orbit.target, theta + panoDelta);
+    orbit.update();
+  }
+
+  // 3) zoom out to default while rotating back
+  if (animated) {
+    const durationMs = shouldFullSpin ? RETURN_ROTATE_MS_FULLSPIN : RETURN_ROTATE_MS_NORMAL;
+    await animateToOrbitView(defaultDollView, durationMs, {
+      rotateYawDelta: rotateBackDelta,
+      rotateStartAt: 0.15,
+      rotateEndAt: 1.0,
+    });
+  } else {
+    applyOrbitViewWithLockedPivot(defaultDollView);
+  }
+
+  // after reset, re-sync the marker (new pyramid)
+  syncYouAreHereToCurrentPano();
 }
 
 function prepDollhouseSceneGraph(root) {
@@ -1840,6 +2081,12 @@ if (tabDollhouse) {
         return;
       }
 
+      // Prefer DOWN as the initial model when first entering dollhouse
+      if (!hasShownInitialDollhouseLoader && !activeDollRoot) {
+        activeDollKey = "down";
+        setDollButtonsActive(activeDollKey);
+      }
+
       setDollButtonsActive(activeDollKey);
 
       await ensureReferenceReady();
@@ -1891,10 +2138,9 @@ if (tabDollhouse) {
           }
         }
       } else if (needsDollReset && defaultDollView) {
-        // Soft reset when returning from pano
+        // Reset when returning from pano: zoom from current node + match pano yaw, then animate out
         needsDollReset = false;
-        // Put pivot back and set default view (no fancy spins here; keep stable)
-        applyOrbitViewWithLockedPivot(defaultDollView);
+        await resetDollhouseFromCurrentPano(true);
         applyReferenceClippingAndLimits();
       }
 
