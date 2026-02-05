@@ -36,6 +36,10 @@
         /* stroke settings (only used when .hasStroke is present) */
         --btn-inner-stroke: 3px;
         --btn-stroke-inset: 4px;
+
+        /* scale system (tabs + doll buttons) */
+        --tab-scale-inactive: 0.94;
+        --tab-scale-active: 1.03;
       }
 
       html,
@@ -212,7 +216,7 @@
         --btn-stroke: var(--tab-inactive-text);
         --btn-stroke-hover: var(--tab-active-text);
 
-        transform: scale(0.94);
+        transform: scale(var(--tab-scale-inactive));
         transform-origin: left center;
 
         transition:
@@ -223,11 +227,11 @@
       }
 
       .tabBtn:hover {
-        transform: scale(0.96) translateY(-1px);
+        transform: scale(calc(var(--tab-scale-inactive) + 0.02)) translateY(-1px);
       }
 
       .tabBtn:active {
-        transform: scale(0.95);
+        transform: scale(calc(var(--tab-scale-inactive) + 0.01));
       }
 
       .tabBtn.active {
@@ -239,20 +243,18 @@
         --btn-bg-hover: var(--tab-inactive-bg-hover);
         --btn-text-hover: var(--tab-inactive-text);
 
-        /* (no stroke for active by class usage) */
-
-        transform: scale(1.03);
+        transform: scale(var(--tab-scale-active));
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
           inset 0 1px 0 rgba(255,255,255,0.10);
       }
 
       .tabBtn.active:hover {
-        transform: scale(1.05) translateY(-1px);
+        transform: scale(calc(var(--tab-scale-active) + 0.02)) translateY(-1px);
       }
 
       .tabBtn.active:active {
-        transform: scale(1.03);
+        transform: scale(var(--tab-scale-active));
       }
 
       /* Brand link (top-right) */
@@ -380,7 +382,9 @@
       }
 
       /* =============================
-         DOLLHOUSE SUB BUTTONS (no stroke)
+         DOLLHOUSE SUB BUTTONS (tab-style)
+         - Active: light, bigger, NO stroke
+         - Inactive: dark, smaller, HAS stroke
       ============================== */
 
       #dollBtns {
@@ -410,17 +414,57 @@
         justify-content: center;
         text-align: center;
 
-        --btn-bg: rgba(255, 255, 255, 0.92);
-        --btn-text: rgba(0, 0, 0, 0.90);
+        /* inactive look = like INTERIOR tab */
+        --btn-bg: var(--tab-inactive-bg);
+        --btn-text: var(--tab-inactive-text);
 
-        --btn-bg-hover: rgba(0, 0, 0, 0.92);
-        --btn-text-hover: rgba(255, 255, 255, 0.95);
+        /* hover invert to active */
+        --btn-bg-hover: var(--tab-active-bg);
+        --btn-text-hover: var(--tab-active-text);
+
+        /* stroke colors */
+        --btn-stroke: var(--tab-inactive-text);
+        --btn-stroke-hover: var(--tab-active-text);
+
+        transform: scale(var(--tab-scale-inactive));
+        transform-origin: center;
+
+        transition:
+          transform 180ms ease,
+          box-shadow 180ms ease,
+          background 140ms ease,
+          color 140ms ease;
+      }
+
+      .dollBtn:hover:not(:disabled) {
+        transform: scale(calc(var(--tab-scale-inactive) + 0.02)) translateY(-1px);
+      }
+
+      .dollBtn:active:not(:disabled) {
+        transform: scale(calc(var(--tab-scale-inactive) + 0.01));
       }
 
       .dollBtn.active {
+        /* active look = like DOLLHOUSE tab */
+        --btn-bg: var(--tab-active-bg);
+        --btn-text: var(--tab-active-text);
+
+        /* active hover invert back to dark */
+        --btn-bg-hover: var(--tab-inactive-bg-hover);
+        --btn-text-hover: var(--tab-inactive-text);
+
+        transform: scale(var(--tab-scale-active));
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
           inset 0 1px 0 rgba(255,255,255,0.10);
+      }
+
+      .dollBtn.active:hover:not(:disabled) {
+        transform: scale(calc(var(--tab-scale-active) + 0.02)) translateY(-1px);
+      }
+
+      .dollBtn.active:active:not(:disabled) {
+        transform: scale(var(--tab-scale-active));
       }
 
       /* =============================
@@ -531,9 +575,10 @@
       </a>
 
       <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
+        <!-- active should NOT have hasStroke -->
         <button id="btnFull" class="uiBtn dollBtn active" type="button">FULL</button>
-        <button id="btnUp" class="uiBtn dollBtn" type="button">UP</button>
-        <button id="btnDown" class="uiBtn dollBtn" type="button">DOWN</button>
+        <button id="btnUp" class="uiBtn dollBtn hasStroke" type="button">UP</button>
+        <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
       </div>
 
       <div id="startOverlay" aria-label="Begin tour overlay">

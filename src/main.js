@@ -742,9 +742,11 @@ function setMode(which) {
 
   // UI visibility
   navWrap.classList.toggle("hidden", which !== "pano");
-  if (roomLabelEl) roomLabelEl.style.opacity = (which === "pano" ? roomLabelEl.style.opacity : "0");
-  if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
+if (roomLabelEl) roomLabelEl.style.opacity = (which === "pano" ? roomLabelEl.style.opacity : "0");
+if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
 
+// ✅ Hide the pano counter in dollhouse
+if (indicator) indicator.style.display = (which === "pano" ? "block" : "none");
   // Controls
   orbit.enabled = (which === "dollhouse");
 
@@ -2108,9 +2110,16 @@ function dollUrlForKey(key) {
 
 function setDollButtonsActive(key) {
   if (!btnFull || !btnUp || !btnDown) return;
+
+  // Active state
   btnFull.classList.toggle("active", key === "full");
   btnUp.classList.toggle("active", key === "up");
   btnDown.classList.toggle("active", key === "down");
+
+  // Stroke rule: ONLY the UNSELECTED buttons have stroke
+  btnFull.classList.toggle("hasStroke", !btnFull.classList.contains("active"));
+  btnUp.classList.toggle("hasStroke", !btnUp.classList.contains("active"));
+  btnDown.classList.toggle("hasStroke", !btnDown.classList.contains("active"));
 }
 
 function getBoundsInfo(root) {
