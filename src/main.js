@@ -2379,9 +2379,12 @@ async function init() {
   setUIEnabled(false);
   setMode("pano");
   showStartOverlay();
-
+  // Hide all tour UI until intro finishes
+  setUIEnabled(false);
   if (navWrap) navWrap.classList.add("hidden");
   if (dollBtns) dollBtns.classList.add("hidden");
+  if (tabPano) tabPano.style.display = "none";
+  if (tabDollhouse) tabDollhouse.style.display = "none";
 
   blankPanoSphere();
 
@@ -2485,6 +2488,10 @@ async function init() {
 
           if (startOverlay) startOverlay.classList.remove("videoMode");
           hideStartOverlay();
+
+          // Reveal tour UI only AFTER intro video completes
+          if (tabPano) tabPano.style.display = "";
+          if (tabDollhouse) tabDollhouse.style.display = "";
 
           preloadPromise.then(() => console.log("✅ background preload complete"));
         } catch (e) {
