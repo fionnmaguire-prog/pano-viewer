@@ -151,7 +151,8 @@
         transition: border-color 120ms ease;
       }
 
-      .uiBtn:hover:not(:disabled) {
+      /* ✅ Hover only applies to NON-active buttons */
+      .uiBtn:hover:not(:disabled):not(.active) {
         transform: translateY(-1px);
         box-shadow:
           0 14px 34px rgba(0,0,0,0.55),
@@ -162,15 +163,21 @@
       }
 
       /* only relevant if stroke exists */
-      .uiBtn.hasStroke:hover:not(:disabled)::after {
+      .uiBtn.hasStroke:hover:not(:disabled):not(.active)::after {
         border-color: var(--btn-stroke-hover);
       }
 
-      .uiBtn:active:not(:disabled) {
+      /* ✅ Active press only applies to NON-active buttons */
+      .uiBtn:active:not(:disabled):not(.active) {
         transform: translateY(0);
         box-shadow:
           0 6px 16px rgba(0,0,0,0.35),
           inset 0 1px 0 rgba(255,255,255,0.05);
+      }
+
+      /* ✅ Selected button feels "locked" */
+      .uiBtn.active {
+        cursor: default;
       }
 
       .uiBtn:disabled {
@@ -226,11 +233,12 @@
           color 140ms ease;
       }
 
-      .tabBtn:hover {
+      /* ✅ Hover only for NON-active tabs */
+      .tabBtn:hover:not(.active) {
         transform: scale(calc(var(--tab-scale-inactive) + 0.02)) translateY(-1px);
       }
 
-      .tabBtn:active {
+      .tabBtn:active:not(.active) {
         transform: scale(calc(var(--tab-scale-inactive) + 0.01));
       }
 
@@ -239,23 +247,14 @@
         --btn-bg: var(--tab-active-bg);
         --btn-text: var(--tab-active-text);
 
-        /* active hover invert back to dark */
-        --btn-bg-hover: var(--tab-inactive-bg-hover);
-        --btn-text-hover: var(--tab-inactive-text);
-
         transform: scale(var(--tab-scale-active));
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
           inset 0 1px 0 rgba(255,255,255,0.10);
       }
 
-      .tabBtn.active:hover {
-        transform: scale(calc(var(--tab-scale-active) + 0.02)) translateY(-1px);
-      }
-
-      .tabBtn.active:active {
-        transform: scale(var(--tab-scale-active));
-      }
+      /* ✅ REMOVE active hover/active animation (selected tab stays still) */
+      /* (intentionally no .tabBtn.active:hover or :active rules) */
 
       /* Brand link (top-right) */
       #brandLink {
@@ -436,11 +435,12 @@
           color 140ms ease;
       }
 
-      .dollBtn:hover:not(:disabled) {
+      /* ✅ Hover only for NON-active doll buttons */
+      .dollBtn:hover:not(:disabled):not(.active) {
         transform: scale(calc(var(--tab-scale-inactive) + 0.02)) translateY(-1px);
       }
 
-      .dollBtn:active:not(:disabled) {
+      .dollBtn:active:not(:disabled):not(.active) {
         transform: scale(calc(var(--tab-scale-inactive) + 0.01));
       }
 
@@ -449,23 +449,14 @@
         --btn-bg: var(--tab-active-bg);
         --btn-text: var(--tab-active-text);
 
-        /* active hover invert back to dark */
-        --btn-bg-hover: var(--tab-inactive-bg-hover);
-        --btn-text-hover: var(--tab-inactive-text);
-
         transform: scale(var(--tab-scale-active));
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
           inset 0 1px 0 rgba(255,255,255,0.10);
       }
 
-      .dollBtn.active:hover:not(:disabled) {
-        transform: scale(calc(var(--tab-scale-active) + 0.02)) translateY(-1px);
-      }
-
-      .dollBtn.active:active:not(:disabled) {
-        transform: scale(var(--tab-scale-active));
-      }
+      /* ✅ REMOVE active hover/active animation (selected stays still) */
+      /* (intentionally no .dollBtn.active:hover or :active rules) */
 
       /* =============================
          BEGIN TOUR OVERLAY
@@ -557,9 +548,7 @@
   <body>
     <div id="app">
       <div id="tabs">
-        <!-- Active has NO stroke -->
         <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
-        <!-- Inactive keeps stroke -->
         <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
       </div>
 
@@ -575,7 +564,6 @@
       </a>
 
       <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
-        <!-- active should NOT have hasStroke -->
         <button id="btnFull" class="uiBtn dollBtn active" type="button">FULL</button>
         <button id="btnUp" class="uiBtn dollBtn hasStroke" type="button">UP</button>
         <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
