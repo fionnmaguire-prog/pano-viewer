@@ -1546,7 +1546,7 @@ async function ensureBestModelHasNode(panoIndex) {
 }
 
 // When entering dollhouse from pano: start near current pano's node, match pano yaw, then zoom out + rotate back to default.
-async function resetDollhouseFromCurrentPano(animated = true) {
+async function resetDollhouseFromCurrentPano(animated = true, { onPrepared = null } = {}) {
   if (!defaultDollView) return;
   if (!refCenter) return;
 
@@ -1591,6 +1591,17 @@ async function resetDollhouseFromCurrentPano(animated = true) {
   const startTheta = endTheta + panoDeltaRaw;
   setOrbitThetaAroundTarget(orbit.target, startTheta);
   orbit.update();
+
+  // ✅ Signal to caller that the camera is now in its correct START pose
+  // (node snap + pano yaw alignment). Caller can safely reveal after this.
+  if (typeof onPrepared === "function") {
+    try {
+      onPrepared({ startTheta, endTheta, panoDeltaRaw, shouldFullSpin });
+    } catch {}
+  }
+
+  // Give the renderer at least one frame with the correct pose before any reveal.
+  await new Promise((r) => requestAnimationFrame(r));
 
   // 3) Always animate back to default when returning from pano
   if (animated) {
@@ -2224,8 +2235,17 @@ if (tabDollhouse) {
           // Extra black hold to prevent a 1-frame wrong rotation flash
           await sleep(150);
 
-          // Start reset while black (so any immediate snaps are hidden)
-          const resetPromise = resetDollhouseFromCurrentPano(true);
+          // Start reset while still black, but WAIT until the start pose is prepared
+          // before revealing to avoid any wrong-frame flash.
+          let preparedResolve;
+          const prepared = new Promise((r) => (preparedResolve = r));
+
+          const resetPromise = resetDollhouseFromCurrentPano(true, {
+            onPrepared: () => preparedResolve && preparedResolve(),
+          });
+
+          // ✅ Keep overlay black until we are in the correct START pose
+          await prepared;
 
           // Now reveal so the user sees the zoom/rotate out animation
           revealedEarly = true;
@@ -2237,9 +2257,18 @@ if (tabDollhouse) {
           applyReferenceClippingAndLimits();
         } else {
           // Returning from pano (normal): start reset while black,
-          // but reveal immediately so the reset animation is visible.
-          const resetPromise = resetDollhouseFromCurrentPano(true);
+          // but reveal only after the start pose is prepared to avoid wrong-frame flash.
+          let preparedResolve;
+          const prepared = new Promise((r) => (preparedResolve = r));
 
+          const resetPromise = resetDollhouseFromCurrentPano(true, {
+            onPrepared: () => preparedResolve && preparedResolve(),
+          });
+
+          // ✅ Keep overlay black until we are in the correct START pose
+          await prepared;
+
+          // Now reveal so the user sees the zoom/rotate out animation
           revealedEarly = true;
           fadeOverlay.style.opacity = "0";
           await fadeOverlayTo(0, 150);
