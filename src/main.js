@@ -26,6 +26,83 @@ let brandSwapTimer = null;
 // Tabs
 const tabPano = document.getElementById("tabPano");
 const tabDollhouse = document.getElementById("tabDollhouse");
+// -----------------------------
+// UI fade-in (mode UI buttons)
+// -----------------------------
+const UI_FADE_DELAY_MS = 140; // small delay after content is visible
+const UI_FADE_MS = 180;       // fade duration
+
+const __uiTimers = new WeakMap();
+
+function __afterNextPaint(fn) {
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
+function uiHide(el, { fadeMs = 120 } = {}) {
+  if (!el) return;
+
+  const t = __uiTimers.get(el);
+  if (t) {
+    clearTimeout(t);
+    __uiTimers.delete(el);
+  }
+
+  if (el.classList.contains("hidden") || el.style.display === "none") return;
+
+  el.style.transition = `opacity ${fadeMs}ms ease`;
+  el.style.opacity = "0";
+  el.style.pointerEvents = "none";
+
+  setTimeout(() => {
+    el.classList.add("hidden");
+  }, Math.max(0, fadeMs));
+}
+
+function uiShowAfter(el, { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS, display = "" } = {}) {
+  if (!el) return;
+
+  const t = __uiTimers.get(el);
+  if (t) {
+    clearTimeout(t);
+    __uiTimers.delete(el);
+  }
+
+  el.classList.remove("hidden");
+  if (display) el.style.display = display;
+
+  el.style.transition = `opacity ${fadeMs}ms ease`;
+  el.style.opacity = "0";
+  el.style.pointerEvents = "none";
+
+  const id = setTimeout(() => {
+    el.style.opacity = "1";
+    el.style.pointerEvents = "auto";
+    __uiTimers.delete(el);
+  }, Math.max(0, delayMs));
+
+  __uiTimers.set(el, id);
+}
+
+function uiShowGroupAfter(els, opts) {
+  for (const el of els) uiShowAfter(el, opts);
+}
+
+function revealPanoUIWhenReady() {
+  __afterNextPaint(() => {
+    uiShowGroupAfter([navWrap].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+
+    if (indicator) {
+      indicator.style.display = "block";
+      uiShowAfter(indicator, { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS, display: "block" });
+    }
+  });
+}
+
+function revealDollUIWhenReady() {
+  __afterNextPaint(() => {
+    uiShowGroupAfter([dollBtns].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+  });
+}
 
 // Begin tour UI
 const startOverlay = document.getElementById("startOverlay");
@@ -577,11 +654,20 @@ function setMode(which) {
   mode = which;
   setTabActive(which);
 
-  if (navWrap) navWrap.classList.toggle("hidden", which !== "pano");
-  if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
+  // Hide mode UI immediately — we reveal it only AFTER the pano/GLB is visible
+if (navWrap) navWrap.classList.add("hidden");
+if (dollBtns) dollBtns.classList.add("hidden");
+if (indicator) {
+  indicator.style.display = "none";
+  indicator.style.opacity = "0";
+  indicator.style.pointerEvents = "none";
+}
 
-  if (indicator) indicator.style.display = which === "pano" ? "block" : "none";
-
+if (indicator) {
+  indicator.style.display = "none";
+  indicator.style.opacity = "0";
+  indicator.style.pointerEvents = "none";
+}
   if (which !== "pano") {
     // Hide room label unless you are hovering nodes (handled by hover logic)
     hideRoomLabelText();
@@ -613,8 +699,9 @@ if (tabPano) {
     blankPanoSphere();
     try {
       const tex = await ensurePanoLoaded(state.index);
-      setSphereMap(tex);
-      requestAnimationFrame(() => fadeInPano(220));
+     setSphereMap(tex);
+requestAnimationFrame(() => fadeInPano(220));
+revealPanoUIWhenReady();
     } catch (e) {
       console.warn("tabPano: failed to reload pano:", e);
       ensurePanoUIActive();
@@ -1146,6 +1233,7 @@ async function jumpToPano(index) {
   applyYawPitch();
 
   requestAnimationFrame(() => fadeInPano(450));
+revealPanoUIWhenReady();
 }
 
 // -----------------------------
@@ -2291,6 +2379,8 @@ if (tabDollhouse) {
         // extra hard guarantee
         fadeOverlay.style.opacity = "0";
       }
+// Reveal dollhouse UI only after the model is visible
+revealDollUIWhenReady();
 
       // 12) Finish loader (if it wasn't already finished in the first-entry safety net)
       if (pm) {
@@ -2484,10 +2574,10 @@ async function init() {
           preloadNearby(0);
 
           setUIEnabled(true);
-          if (navWrap) navWrap.classList.remove("hidden");
+// Fade pano UI in only after the first pano is actually visible
+revealPanoUIWhenReady();
 
-          requestAnimationFrame(() => fadeInPano(450));
-
+requestAnimationFrame(() => fadeInPano(450));
           if (startOverlay) startOverlay.classList.remove("videoMode");
           hideStartOverlay();
 
