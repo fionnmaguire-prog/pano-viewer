@@ -7,6 +7,7 @@ const navWrap = document.getElementById("navWrap");
 const indicator = document.getElementById("indicator");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
+
 // -----------------------------
 // Brand link UI (top-right)
 // -----------------------------
@@ -14,6 +15,7 @@ const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
 let brandSwapTimer = null;
+
 // -----------------------------
 // Room label UI (bottom-left)
 // -----------------------------
@@ -27,7 +29,8 @@ roomLabelEl.style.borderRadius = "10px";
 roomLabelEl.style.background = "rgba(0,0,0,0.55)";
 roomLabelEl.style.backdropFilter = "blur(6px)";
 roomLabelEl.style.color = "#fff";
-roomLabelEl.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
+roomLabelEl.style.fontFamily =
+  "system-ui, -apple-system, Segoe UI, Roboto, Arial";
 roomLabelEl.style.fontSize = "13px";
 roomLabelEl.style.fontWeight = "600";
 roomLabelEl.style.letterSpacing = "0.4px";
@@ -39,6 +42,12 @@ roomLabelEl.style.opacity = "0"; // start hidden until we set text
 
 container.appendChild(roomLabelEl);
 
+// -----------------------------
+// "You are here" indicator animation constants
+// -----------------------------
+const NODE_MARKER_BOB_HEIGHT = 0.35;   // vertical travel distance
+const NODE_MARKER_BOB_SPEED  = 2.0;    // bob speed (higher = faster)
+const NODE_MARKER_SPIN_SPEED = 0.6;    // radians per second
 // -----------------------------
 // Brand swap timer (logo -> text)
 // -----------------------------
@@ -511,6 +520,67 @@ let activeNodeMeshes = [];
 let hoveredNode = null;
 
 const nodeHoverState = new Map(); // mesh -> { baseScale, hover, target }
+// -----------------------------
+// "You are here" marker (yellow pyramid)
+// -----------------------------
+const YOU_ARE_HERE_OFFSET_Y = 0.75;  // height above the blue node
+const YOU_ARE_HERE_BOB_AMP = 0.08;   // bob amplitude
+const YOU_ARE_HERE_BOB_SPEED = 2.2;  // bob speed
+
+// 4-sided cone = pyramid-ish
+const youAreHere = new THREE.Mesh(
+  new THREE.ConeGeometry(0.22, 0.42, 4),
+  new THREE.MeshStandardMaterial({
+    color: 0xffd400,
+    emissive: 0x2a2000,
+    emissiveIntensity: 0.8,
+    roughness: 0.35,
+    metalness: 0.0,
+    toneMapped: true,
+  })
+);
+
+// Point down like a location pin
+youAreHere.rotation.x = Math.PI;
+youAreHere.visible = false;
+youAreHere.frustumCulled = false;
+
+const youAreHereBasePos = new THREE.Vector3();
+let youAreHereHasBase = false;
+
+function hideYouAreHere() {
+  youAreHere.visible = false;
+  youAreHereHasBase = false;
+}
+
+function placeYouAreHereAboveNodeMesh(nodeMesh) {
+  if (!nodeMesh) {
+    hideYouAreHere();
+    return;
+  }
+
+  const p = new THREE.Vector3();
+  nodeMesh.getWorldPosition(p);
+  p.y += YOU_ARE_HERE_OFFSET_Y;
+
+  youAreHere.position.copy(p);
+  youAreHereBasePos.copy(p);
+  youAreHereHasBase = true;
+  youAreHere.visible = (mode === "dollhouse");
+}
+
+// Uses your existing helpers: dollCache + activeDollKey + findNodeInEntry + state.index
+function syncYouAreHereToCurrentPano() {
+  if (mode !== "dollhouse") {
+    hideYouAreHere();
+    return;
+  }
+
+  // Do NOT auto-switch models here — just mark if this model has the node.
+  const entry = dollCache.get(activeDollKey);
+  const node = findNodeInEntry(entry, state.index);
+  placeYouAreHereAboveNodeMesh(node);
+}
 
 // parse NODE_01 -> pano index 0
 function parseNodeIndex(name) {
@@ -613,6 +683,8 @@ panoCamera.position.set(0, 0, 0.1);
 // Dollhouse scene/camera/controls
 const dollScene = new THREE.Scene();
 dollScene.background = new THREE.Color(0x111111);
+// Add the "you are here" marker to the dollhouse scene
+dollScene.add(youAreHere);
 
 const dollCamera = new THREE.PerspectiveCamera(
   55,
@@ -747,6 +819,12 @@ if (dollBtns) dollBtns.classList.toggle("hidden", which !== "dollhouse");
 
 // ✅ Hide the pano counter in dollhouse
 if (indicator) indicator.style.display = (which === "pano" ? "block" : "none");
+// Show/hide the "you are here" marker
+if (which !== "dollhouse") {
+  hideYouAreHere();
+} else {
+  youAreHere.visible = true; // position is set once the model is active
+}
   // Controls
   orbit.enabled = (which === "dollhouse");
 
@@ -968,6 +1046,7 @@ async function jumpToPano(index) {
   }
 
   setMode("pano");
+hideYouAreHere();
 
   // ✅ IMPORTANT: undo any node-influenced orbit target so it can't poison the return
   if (refCenter) {
@@ -2051,6 +2130,8 @@ async function resetDollhouseFromCurrentPano(animated = true) {
   } else {
     applyOrbitViewWithLockedPivot(defaultDollView);
   }
+// Place marker above the current pano node
+placeYouAreHereAboveNodeMesh(node);
 
   // 2) APPLY the pano rotation offset immediately to this starting view
   //    (so the dollhouse begins "facing" the same way the pano was facing)
@@ -2250,6 +2331,8 @@ function setActiveDollRoot(root) {
   // ✅ Activate correct node list for raycasting
   const entry = dollCache.get(activeDollKey);
   activeNodeMeshes = entry?.nodes || [];
+// Keep marker aligned to the current pano node
+syncYouAreHereToCurrentPano();
 
   // reset hover when switching models
   if (hoveredNode) {
@@ -2796,6 +2879,7 @@ ro.observe(container);
 // Render loop (mode-based)
 // -----------------------------
 let lastT = performance.now();
+
 function animate() {
   requestAnimationFrame(animate);
 
@@ -2803,19 +2887,39 @@ function animate() {
   const dt = Math.min(0.05, (now - lastT) / 1000);
   lastT = now;
 
-  // ✅ guarantee the correct exposure every frame
+  // Always enforce correct exposure/look
   applyRenderLookForMode(mode);
 
   if (mode === "dollhouse") {
     orbit.update();
     updateNodeHover(dt);
+
+    // ✅ "You are here" pyramid animation
+    if (youAreHere && youAreHere.visible) {
+      // Capture base position once after placement
+      if (!youAreHereHasBase) {
+        youAreHereBasePos.copy(youAreHere.position);
+        youAreHereHasBase = true;
+      }
+
+      const t = now * 0.001;
+
+      // Vertical bob
+      youAreHere.position.y =
+        youAreHereBasePos.y +
+        Math.sin(t * YOU_ARE_HERE_BOB_SPEED) * YOU_ARE_HERE_BOB_AMP;
+
+      // Slow continuous spin
+      youAreHere.rotation.y += YOU_ARE_HERE_SPIN_SPEED * dt;
+    }
+
     renderer.render(dollScene, dollCamera);
   } else {
     renderer.render(panoScene, panoCamera);
   }
 }
-animate();
 
+animate();
 init();
 
 
