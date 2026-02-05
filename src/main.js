@@ -1592,17 +1592,18 @@ async function resetDollhouseFromCurrentPano(animated = true) {
   setOrbitThetaAroundTarget(orbit.target, startTheta);
   orbit.update();
 
-  // 3) rotate back to default theta while zooming/settling to the default view
+  // 3) Always animate back to default when returning from pano
   if (animated) {
-    const durationMs = shouldFullSpin ? RETURN_ROTATE_MS_FULLSPIN : RETURN_ROTATE_MS_NORMAL;
+    const durationMs = shouldFullSpin
+      ? RETURN_ROTATE_MS_FULLSPIN
+      : RETURN_ROTATE_MS_NORMAL;
 
-    // shortest path from start -> end, plus optional full spin (2π doesn’t change final orientation)
     let rotateYawDeltaToEnd = shortestAngleDelta(startTheta, endTheta);
     if (shouldFullSpin) rotateYawDeltaToEnd += FULL_SPIN_RAD * FULL_SPIN_SIGN;
 
     await animateToOrbitView(defaultDollView, durationMs, {
       rotateYawDelta: rotateYawDeltaToEnd,
-      rotateStartAt: 0.15,
+      rotateStartAt: 0.1,
       rotateEndAt: 1.0,
       lockTheta: true,
     });
