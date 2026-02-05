@@ -2064,7 +2064,7 @@ if (btnUp) btnUp.addEventListener("click", () => switchDollhouseModel("up"));
 if (btnDown) btnDown.addEventListener("click", () => switchDollhouseModel("down"));
 
 // -----------------------------
-// Dollhouse enter flow (safe)
+// Dollhouse enter flow (safe) — with double-fade prevention
 // -----------------------------
 let dollhouseEnterToken = 0;
 let hasShownInitialDollhouseLoader = false;
@@ -2078,17 +2078,23 @@ if (tabDollhouse) {
     const comingFromPano = mode === "pano";
     let pm = null;
 
+    // ✅ Prevent “reveal twice” (reset branch reveals early)
+    let revealedEarly = false;
+
     try {
+      // 1) Fade to black if leaving pano
       if (comingFromPano) {
         await fadeOverlayTo(1, 100);
         if (!stillValid()) return;
       }
 
-      // When entering dollhouse from pano, request reset-style behavior
+      // 2) When entering dollhouse from pano, request reset-style behavior
       if (comingFromPano) needsDollReset = true;
 
+      // 3) Switch mode
       setMode("dollhouse");
 
+      // 4) Loader (only first entry)
       const shouldShowLoader = !hasShownInitialDollhouseLoader;
       let tRef = null;
       let tModel = null;
@@ -2099,13 +2105,14 @@ if (tabDollhouse) {
         tModel = pm.task("model", 3.0);
       }
 
+      // 5) Hard guarantee black while loading
       fadeOverlay.style.opacity = "1";
       if (!stillValid()) {
         pm?.finish?.();
         return;
       }
 
-      // Prefer DOWN as the initial model when first entering dollhouse
+      // 6) Prefer DOWN as initial model on first ever entry
       if (!hasShownInitialDollhouseLoader && !activeDollRoot) {
         activeDollKey = "down";
         setDollButtonsActive(activeDollKey);
@@ -2113,6 +2120,7 @@ if (tabDollhouse) {
 
       setDollButtonsActive(activeDollKey);
 
+      // 7) Ensure reference (refCenter/bounds/limits)
       await ensureReferenceReady();
       tRef?.done?.();
       if (!stillValid()) {
@@ -2120,8 +2128,11 @@ if (tabDollhouse) {
         return;
       }
 
-      // Ensure active model is loaded
-      const root = await loadDollModel(activeDollKey, tModel ? (p) => tModel.update(p) : null);
+      // 8) Ensure active model is loaded
+      const root = await loadDollModel(
+        activeDollKey,
+        tModel ? (p) => tModel.update(p) : null
+      );
       tModel?.done?.();
       if (!stillValid()) {
         pm?.finish?.();
@@ -2131,7 +2142,7 @@ if (tabDollhouse) {
       alignModelToReference(activeDollKey);
       setActiveDollRoot(root);
 
-      // First-time default view
+      // 9) First-time default view
       if (!framedOnce) {
         framedOnce = true;
 
@@ -2145,10 +2156,13 @@ if (tabDollhouse) {
           // Frame FULL, then save
           await loadDollModel("full").catch(() => {});
           const fullEntry = dollCache.get("full");
+
           if (fullEntry?.root) {
             frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
             applyReferenceClippingAndLimits();
+
             defaultDollView = saveOrbitView();
+
             if (isAdminMode()) {
               try {
                 localStorage.setItem(
@@ -2161,18 +2175,34 @@ if (tabDollhouse) {
             defaultDollView = saveOrbitView();
           }
         }
-      } else if (needsDollReset && defaultDollView) {
-        // Reset when returning from pano: zoom from current node + match pano yaw, then animate out
+      }
+      // 10) Returning from pano: run reset animation
+      else if (needsDollReset && defaultDollView) {
         needsDollReset = false;
-        await resetDollhouseFromCurrentPano(true);
+
+        // Start the reset while black, but reveal immediately so user can SEE it
+        const resetPromise = resetDollhouseFromCurrentPano(true);
+
+        revealedEarly = true;
+        fadeOverlay.style.opacity = "0";
+        await fadeOverlayTo(0, 150);
+        fadeOverlay.style.opacity = "0";
+
+        await resetPromise;
         applyReferenceClippingAndLimits();
       }
 
-      // reveal
-      fadeOverlay.style.opacity = "0";
-      await fadeOverlayTo(0, 150);
-      fadeOverlay.style.opacity = "0";
+      // 11) Reveal (only if we didn’t already reveal during reset)
+      if (!revealedEarly) {
+        fadeOverlay.style.opacity = "0";
+        await fadeOverlayTo(0, 150);
+        fadeOverlay.style.opacity = "0";
+      } else {
+        // extra hard guarantee
+        fadeOverlay.style.opacity = "0";
+      }
 
+      // 12) Finish loader
       if (pm) {
         hasShownInitialDollhouseLoader = true;
         pm.finish();
@@ -2180,6 +2210,8 @@ if (tabDollhouse) {
     } catch (e) {
       console.error("Failed to load dollhouse:", e);
       if (pm) pm.cancel();
+
+      // Never leave user black
       try {
         fadeOverlay.style.opacity = "0";
         await fadeOverlayTo(0, 120);
