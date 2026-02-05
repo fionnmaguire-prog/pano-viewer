@@ -2176,37 +2176,59 @@ if (tabDollhouse) {
 
       // 10) Apply the correct entry behavior
       // If we're coming from pano (including the very first time ever entering dollhouse),
-      // we want the visible reset animation (node-zoom + yaw match -> zoom out to default).
-      if (comingFromPano && defaultDollView) {
+      // we want the reset animation (node-zoom + yaw match -> zoom out to default).
+      // On FIRST entry, keep a short safety black screen so no wrong-rotation frame ever flashes.
+      const isFirstEntryIntoDollhouse = shouldShowLoader;
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      if ((comingFromPano || needsDollReset) && defaultDollView) {
         needsDollReset = false;
 
-        // Start the reset while black, but reveal immediately so the user can SEE it
-        const resetPromise = resetDollhouseFromCurrentPano(true);
+        if (isFirstEntryIntoDollhouse) {
+          // ✅ FIRST ENTRY SAFETY NET:
+          // - keep BLACK while loader completes
+          // - add a tiny extra hold so the GPU/scene settles
+          // - start the reset while still black
+          // - then reveal so the animation is always correct/clean
 
-        revealedEarly = true;
-        fadeOverlay.style.opacity = "0";
-        await fadeOverlayTo(0, 150);
-        fadeOverlay.style.opacity = "0";
+          // Ensure the loader is fully done BEFORE any reveal/anim
+          if (pm) {
+            hasShownInitialDollhouseLoader = true;
+            pm.finish();
+            // pm.finish hides the loader after ~180ms
+            await sleep(210);
+            pm = null;
+          }
 
-        await resetPromise;
-        applyReferenceClippingAndLimits();
-      }
-      // Otherwise, if we flagged a reset (rare case), do it too.
-      else if (needsDollReset && defaultDollView) {
-        needsDollReset = false;
+          // Extra black hold to prevent a 1-frame wrong rotation flash
+          await sleep(150);
 
-        const resetPromise = resetDollhouseFromCurrentPano(true);
+          // Start reset while black (so any immediate snaps are hidden)
+          const resetPromise = resetDollhouseFromCurrentPano(true);
 
-        revealedEarly = true;
-        fadeOverlay.style.opacity = "0";
-        await fadeOverlayTo(0, 150);
-        fadeOverlay.style.opacity = "0";
+          // Now reveal so the user sees the zoom/rotate out animation
+          revealedEarly = true;
+          fadeOverlay.style.opacity = "0";
+          await fadeOverlayTo(0, 150);
+          fadeOverlay.style.opacity = "0";
 
-        await resetPromise;
-        applyReferenceClippingAndLimits();
-      }
-      // If we are NOT coming from pano, just apply the stored default view (no reset anim)
-      else if (defaultDollView) {
+          await resetPromise;
+          applyReferenceClippingAndLimits();
+        } else {
+          // Returning from pano (normal): start reset while black,
+          // but reveal immediately so the reset animation is visible.
+          const resetPromise = resetDollhouseFromCurrentPano(true);
+
+          revealedEarly = true;
+          fadeOverlay.style.opacity = "0";
+          await fadeOverlayTo(0, 150);
+          fadeOverlay.style.opacity = "0";
+
+          await resetPromise;
+          applyReferenceClippingAndLimits();
+        }
+      } else if (defaultDollView) {
         applyOrbitViewWithLockedPivot(defaultDollView);
         applyReferenceClippingAndLimits();
       }
@@ -2221,7 +2243,7 @@ if (tabDollhouse) {
         fadeOverlay.style.opacity = "0";
       }
 
-      // 12) Finish loader
+      // 12) Finish loader (if it wasn't already finished in the first-entry safety net)
       if (pm) {
         hasShownInitialDollhouseLoader = true;
         pm.finish();
