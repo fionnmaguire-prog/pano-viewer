@@ -2142,17 +2142,14 @@ if (tabDollhouse) {
       alignModelToReference(activeDollKey);
       setActiveDollRoot(root);
 
-      // 9) First-time default view
+      // 9) Ensure we have a default view (first entry)
       if (!framedOnce) {
         framedOnce = true;
 
         // Default view priority: tour.json -> localStorage -> frame full
         if (!defaultDollView) defaultDollView = loadSavedDefaultDollView();
 
-        if (defaultDollView) {
-          applyOrbitViewWithLockedPivot(defaultDollView);
-          applyReferenceClippingAndLimits();
-        } else {
+        if (!defaultDollView) {
           // Frame FULL, then save
           await loadDollModel("full").catch(() => {});
           const fullEntry = dollCache.get("full");
@@ -2160,7 +2157,6 @@ if (tabDollhouse) {
           if (fullEntry?.root) {
             frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
             applyReferenceClippingAndLimits();
-
             defaultDollView = saveOrbitView();
 
             if (isAdminMode()) {
@@ -2172,15 +2168,19 @@ if (tabDollhouse) {
               } catch {}
             }
           } else {
+            // Fallback: whatever we currently have
             defaultDollView = saveOrbitView();
           }
         }
       }
-      // 10) Returning from pano: run reset animation
-      else if (needsDollReset && defaultDollView) {
+
+      // 10) Apply the correct entry behavior
+      // If we're coming from pano (including the very first time ever entering dollhouse),
+      // we want the visible reset animation (node-zoom + yaw match -> zoom out to default).
+      if (comingFromPano && defaultDollView) {
         needsDollReset = false;
 
-        // Start the reset while black, but reveal immediately so user can SEE it
+        // Start the reset while black, but reveal immediately so the user can SEE it
         const resetPromise = resetDollhouseFromCurrentPano(true);
 
         revealedEarly = true;
@@ -2189,6 +2189,25 @@ if (tabDollhouse) {
         fadeOverlay.style.opacity = "0";
 
         await resetPromise;
+        applyReferenceClippingAndLimits();
+      }
+      // Otherwise, if we flagged a reset (rare case), do it too.
+      else if (needsDollReset && defaultDollView) {
+        needsDollReset = false;
+
+        const resetPromise = resetDollhouseFromCurrentPano(true);
+
+        revealedEarly = true;
+        fadeOverlay.style.opacity = "0";
+        await fadeOverlayTo(0, 150);
+        fadeOverlay.style.opacity = "0";
+
+        await resetPromise;
+        applyReferenceClippingAndLimits();
+      }
+      // If we are NOT coming from pano, just apply the stored default view (no reset anim)
+      else if (defaultDollView) {
+        applyOrbitViewWithLockedPivot(defaultDollView);
         applyReferenceClippingAndLimits();
       }
 
