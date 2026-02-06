@@ -24,6 +24,39 @@ const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
 let brandSwapTimer = null;
 
+// Cache the pill styling on the wrapper so we can disable it for the logo-only state
+const __brandLinkPillStyle = brandLink
+  ? {
+      background: brandLink.style.background,
+      padding: brandLink.style.padding,
+      borderRadius: brandLink.style.borderRadius,
+      boxShadow: brandLink.style.boxShadow,
+      backdropFilter: brandLink.style.backdropFilter,
+    }
+  : null;
+
+function setBrandLinkPillEnabled(enabled) {
+  if (!brandLink) return;
+
+  if (enabled) {
+    // Restore the original (pill) look for the text state
+    if (__brandLinkPillStyle) {
+      brandLink.style.background = __brandLinkPillStyle.background;
+      brandLink.style.padding = __brandLinkPillStyle.padding;
+      brandLink.style.borderRadius = __brandLinkPillStyle.borderRadius;
+      brandLink.style.boxShadow = __brandLinkPillStyle.boxShadow;
+      brandLink.style.backdropFilter = __brandLinkPillStyle.backdropFilter;
+    }
+  } else {
+    // Logo-only state: no pill/transparent background around the PNG
+    brandLink.style.background = "transparent";
+    brandLink.style.padding = "0";
+    brandLink.style.borderRadius = "0";
+    brandLink.style.boxShadow = "none";
+    brandLink.style.backdropFilter = "none";
+  }
+}
+
 // Ensure the <img> points at the bundled asset (prevents broken-image/alt-text display)
 if (brandLogo) {
   brandLogo.src = brandLogoUrl;
@@ -34,7 +67,7 @@ if (brandLogo) {
   // (reset back to 1x whenever we hard-hide so the animation can replay)
   brandLogo.style.transformOrigin = "center center";
   brandLogo.style.transform = "scale(1)";
-  brandLogo.style.transition = "transform 520ms ease"; // slower grow than prior 260ms shrink
+  brandLogo.style.transition = "transform 900ms ease"; // slower grow
 }
 
 function hideBrandUIHard() {
@@ -45,8 +78,10 @@ function hideBrandUIHard() {
   if (brandLogo) brandLogo.classList.add("hidden");
   if (brandText) brandText.classList.add("hidden");
 
-  // Reset logo scale so next reveal animates from small -> 200%
+  // Reset logo scale so next reveal animates from small -> 400%
   if (brandLogo) brandLogo.style.transform = "scale(1)";
+
+  setBrandLinkPillEnabled(false);
 
   if (brandSwapTimer) {
     clearTimeout(brandSwapTimer);
@@ -60,10 +95,17 @@ function showBrandUIHard() {
   brandLink.style.display = "";
   brandLink.classList.remove("hidden");
 
-  // Grow logo to 200% once visible
+  // When revealing, we start in the LOGO state (no pill around the logo)
+  setBrandLinkPillEnabled(false);
+
+  // Ensure logo is visible and text is hidden initially
+  if (brandLogo) brandLogo.classList.remove("hidden");
+  if (brandText) brandText.classList.add("hidden");
+
+  // Grow logo to 400% once visible
   if (brandLogo) {
     requestAnimationFrame(() => {
-      brandLogo.style.transform = "scale(2)";
+      brandLogo.style.transform = "scale(4)";
     });
   }
 }
@@ -233,12 +275,16 @@ function startBrandSwapTimer(delayMs = 10000) {
   // Start on logo
   brandLogo.classList.remove("hidden");
   brandText.classList.add("hidden");
+  // Logo state: wrapper pill OFF so nothing extends around the PNG
+  setBrandLinkPillEnabled(false);
 
   brandSwapTimer = setTimeout(() => {
     // Guard again at fire-time
     if (brandLink.classList.contains("hidden") || brandLink.style.display === "none") return;
     brandLogo.classList.add("hidden");
     brandText.classList.remove("hidden");
+    // Text state: wrapper pill ON so the pill surrounds the domain text
+    setBrandLinkPillEnabled(true);
   }, delayMs);
 }
 
