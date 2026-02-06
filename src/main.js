@@ -2454,9 +2454,23 @@ if (tabDollhouse) {
 
     try {
       // 1) Fade to black if leaving pano
+      // IMPORTANT: keep the overlay truly opaque before we switch scenes,
+      // and also blank the pano sphere so even if anything renders for 1 frame
+      // it will be black (prevents the “1-frame full pano flash”)
       if (comingFromPano) {
-        await fadeOverlayTo(1, 100);
+        // Cancel any in-flight fade animations
+        fadeToken++;
+
+        // Ensure we start fading from the *current* opacity (don’t hard-set to 0)
+        await fadeOverlayTo(1, 160);
+        fadeOverlay.style.opacity = "1"; // hard guarantee
         if (!stillValid()) return;
+
+        // Kill pano visuals while we’re black (prevents carry-over flashes)
+        blankPanoSphere();
+
+        // Give the renderer one frame to present the black state before switching
+        await new Promise((r) => requestAnimationFrame(r));
       }
 
       // 2) When entering dollhouse from pano, request reset-style behavior
@@ -2588,9 +2602,11 @@ if (tabDollhouse) {
           await prepared;
 
           // Now reveal so the user sees the zoom/rotate out animation
+          // Start from fully black, then fade in (prevents 1-frame snap)
           revealedEarly = true;
-          fadeOverlay.style.opacity = "0";
-          await fadeOverlayTo(0, 150);
+          fadeOverlay.style.opacity = "1";
+          await new Promise((r) => requestAnimationFrame(r));
+          await fadeOverlayTo(0, 240);
           fadeOverlay.style.opacity = "0";
 
           await resetPromise;
@@ -2609,9 +2625,11 @@ if (tabDollhouse) {
           await prepared;
 
           // Now reveal so the user sees the zoom/rotate out animation
+          // Start from fully black, then fade in (prevents 1-frame snap)
           revealedEarly = true;
-          fadeOverlay.style.opacity = "0";
-          await fadeOverlayTo(0, 150);
+          fadeOverlay.style.opacity = "1";
+          await new Promise((r) => requestAnimationFrame(r));
+          await fadeOverlayTo(0, 240);
           fadeOverlay.style.opacity = "0";
 
           await resetPromise;
@@ -2623,9 +2641,11 @@ if (tabDollhouse) {
       }
 
       // 11) Reveal (only if we didn’t already reveal during reset)
+      // Always fade-in the start of dollhouse view (small, clean reveal)
       if (!revealedEarly) {
-        fadeOverlay.style.opacity = "0";
-        await fadeOverlayTo(0, 150);
+        fadeOverlay.style.opacity = "1";
+        await new Promise((r) => requestAnimationFrame(r));
+        await fadeOverlayTo(0, 240);
         fadeOverlay.style.opacity = "0";
       } else {
         // extra hard guarantee
@@ -2645,8 +2665,10 @@ revealDollUIWhenReady();
 
       // Never leave user black
       try {
+        fadeOverlay.style.opacity = "1";
+        await new Promise((r) => requestAnimationFrame(r));
+        await fadeOverlayTo(0, 180);
         fadeOverlay.style.opacity = "0";
-        await fadeOverlayTo(0, 120);
       } catch {}
     }
   });
