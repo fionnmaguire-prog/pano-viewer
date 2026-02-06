@@ -23,6 +23,27 @@ const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
 let brandSwapTimer = null;
 
+function hideBrandUIHard() {
+  if (!brandLink) return;
+  // Hard-hide to prevent any 1-frame CSS/class flicker
+  brandLink.classList.add("hidden");
+  brandLink.style.display = "none";
+  if (brandLogo) brandLogo.classList.add("hidden");
+  if (brandText) brandText.classList.add("hidden");
+
+  if (brandSwapTimer) {
+    clearTimeout(brandSwapTimer);
+    brandSwapTimer = null;
+  }
+}
+
+function showBrandUIHard() {
+  if (!brandLink) return;
+  // Re-enable and let the normal swap behavior manage logo/text
+  brandLink.style.display = "";
+  brandLink.classList.remove("hidden");
+}
+
 // Tabs
 const tabPano = document.getElementById("tabPano");
 const tabDollhouse = document.getElementById("tabDollhouse");
@@ -176,17 +197,22 @@ const YOU_ARE_HERE_OFFSET_Y = 0.75;
 // Brand swap
 // -----------------------------
 function startBrandSwapTimer(delayMs = 10000) {
-  if (!brandLogo || !brandText) return;
+  // Only run the swap if the brand UI is actually allowed to be visible.
+  if (!brandLink || !brandLogo || !brandText) return;
+  if (brandLink.classList.contains("hidden") || brandLink.style.display === "none") return;
 
   if (brandSwapTimer) {
     clearTimeout(brandSwapTimer);
     brandSwapTimer = null;
   }
 
+  // Start on logo
   brandLogo.classList.remove("hidden");
   brandText.classList.add("hidden");
 
   brandSwapTimer = setTimeout(() => {
+    // Guard again at fire-time
+    if (brandLink.classList.contains("hidden") || brandLink.style.display === "none") return;
     brandLogo.classList.add("hidden");
     brandText.classList.remove("hidden");
   }, delayMs);
@@ -2568,7 +2594,7 @@ async function init() {
   if (dollBtns) dollBtns.classList.add("hidden");
   if (tabPano) tabPano.style.display = "none";
   if (tabDollhouse) tabDollhouse.style.display = "none";
-  if (brandLink) brandLink.classList.add("hidden");
+  hideBrandUIHard();
 
   blankPanoSphere();
 
@@ -2625,10 +2651,8 @@ async function init() {
       async () => {
         startBtn.disabled = true;
 
-        // Keep brand link hidden during the begin->intro transition (prevents 1-frame flash)
-        if (brandLink) brandLink.classList.add("hidden");
-
-        startBrandSwapTimer(10000);
+        // Hard-hide brand UI during begin -> intro to prevent any flicker
+        hideBrandUIHard();
         if (startCard) startCard.classList.add("hidden");
         if (startOverlay) startOverlay.classList.add("videoMode");
 
@@ -2681,8 +2705,15 @@ requestAnimationFrame(() => fadeInPano(450));
           // Reveal tour UI only AFTER intro video completes
           if (tabPano) tabPano.style.display = "";
           if (tabDollhouse) tabDollhouse.style.display = "";
-          // Now that the intro is finished, allow the brand link to appear
-          if (brandLink) brandLink.classList.remove("hidden");
+          // Now that the intro is finished, allow the brand UI to appear (no flicker)
+          showBrandUIHard();
+          // Start the 10s logo -> text swap only after the brand UI is visible
+          startBrandSwapTimer(10000);
+          // One more guard to ensure no 1-frame flash during the overlay removal
+          __afterNextPaint(() => {
+            showBrandUIHard();
+            startBrandSwapTimer(10000);
+          });
 
           preloadPromise.then(() => console.log("✅ background preload complete"));
         } catch (e) {
