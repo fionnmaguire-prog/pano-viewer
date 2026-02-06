@@ -214,13 +214,66 @@ function getTourId() {
   const params = new URLSearchParams(location.search);
   return params.get("tour") || "prod_demo_house_01";
 }
+
 function getApiBase() {
   const params = new URLSearchParams(location.search);
   return (params.get("api") || "https://rtf-player-api.fionnmaguire.workers.dev").replace(/\/$/, "");
 }
+
 function isAdminMode() {
   const params = new URLSearchParams(location.search);
   return params.get("admin") === "1";
+}
+
+// -----------------------------
+// Listing page bridge (postMessage)
+// -----------------------------
+// Best practice: include parentOrigin in the iframe src, e.g.
+// https://realtour.rtfmediasolutions.com/?tour=...&parentOrigin=https://listing.rtfmediasolutions.com
+function getParentOrigin() {
+  const params = new URLSearchParams(location.search);
+  const fromParam = params.get("parentOrigin");
+  if (fromParam) return fromParam;
+
+  // Try to infer from referrer (works when embedded as an iframe)
+  try {
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch {}
+
+  // Safe fallback (change if your listing domain changes)
+  return "https://listing.rtfmediasolutions.com";
+}
+
+const LISTING_PARENT_ORIGIN = getParentOrigin();
+
+// Emits the current pano/node state to the parent listing page.
+// NOTE: This function assumes `mode` exists globally in your script.
+// It also assumes `getRoomLabelForIndex(i)` exists elsewhere (it does in your file).
+function emitListingNodeChange(panoIndex, source = "") {
+  const idx = Number(panoIndex);
+  if (!Number.isFinite(idx) || idx < 0) return;
+
+  let roomName = "";
+  try {
+    roomName = (typeof getRoomLabelForIndex === "function" ? getRoomLabelForIndex(idx) : "") || "";
+  } catch {}
+
+  try {
+    window.parent?.postMessage(
+      {
+        type: "RTF_NODE_CHANGE",
+        tourId: getTourId(),
+        panoIndex: idx,       // 0-based index for code
+        nodeNumber: idx + 1,  // 1-based for humans
+        roomName,
+        mode,                 // expected: "pano" | "dollhouse"
+        source,               // debug string for tracing
+      },
+      LISTING_PARENT_ORIGIN
+    );
+  } catch {
+    // Never crash the player due to cross-origin / embedding issues
+  }
 }
 
 let TOUR = null;
@@ -229,12 +282,15 @@ let TOUR_BASE = "";
 function pad(n, len) {
   return String(n).padStart(len, "0");
 }
+
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+
 function applyPanoPattern(pattern, i1) {
   return pattern.replace("{0000}", pad(i1, 4));
 }
+
 function applyTransitionPattern(pattern, a2, b2) {
   let out = pattern;
   out = out.replace("{00}", pad(a2, 2));
@@ -252,7 +308,6 @@ async function loadTourConfig() {
   if (!res.ok) throw new Error(`Failed to load tour.json for tour=${id}`);
   TOUR = await res.json();
 }
-
 // -----------------------------
 // Intro video
 // -----------------------------
@@ -621,26 +676,41 @@ function getRoomLabelForIndex(i) {
   const label = ROOMS?.[i];
   return typeof label === "string" && label.trim().length ? label.trim() : "";
 }
+
 function showRoomLabelText(text) {
   const t = (text ?? "").toString().trim();
+
+  // Guard: don't crash if the element isn't found yet
+  if (!roomLabelEl) return;
+
   roomLabelEl.textContent = t;
   roomLabelEl.style.opacity = t ? "1" : "0";
 }
+
 function hideRoomLabelText() {
+  if (!roomLabelEl) return;
   roomLabelEl.style.opacity = "0";
 }
+
 function setRoomLabel(i) {
   showRoomLabelText(getRoomLabelForIndex(i));
 }
+
 function updateIndicator(i) {
   if (indicator) indicator.textContent = `${pad2(i + 1)} / ${pad2(PANOS.length)}`;
+
   setRoomLabel(i);
+
+  // Emit to listing page (safe/no-op if not embedded or if bridge not present)
+  if (typeof emitListingNodeChange === "function") {
+    emitListingNodeChange(i, "updateIndicator");
+  }
 }
+
 function setUIEnabled(enabled) {
   if (backBtn) backBtn.disabled = !enabled;
   if (forwardBtn) forwardBtn.disabled = !enabled;
 }
-
 // -----------------------------
 // Mode switching (safe)
 // -----------------------------
@@ -667,29 +737,37 @@ function setMode(which) {
   }
 
   mode = which;
-__uiEpoch++; // ✅ invalidate any pending UI reveals from the previous mode
+
+  // ✅ invalidate any pending UI reveals from the previous mode
+  __uiEpoch++;
+
   setTabActive(which);
 
-  // Hide mode UI immediately — we reveal it only AFTER the pano/GLB is visible
-// Hide mode UI immediately — and HARD stop any pending reveals
-uiHide(navWrap, { fadeMs: 0 });
-uiHide(dollBtns, { fadeMs: 0 });
+  // Hide mode UI immediately — and HARD stop any pending reveals
+  uiHide(navWrap, { fadeMs: 0 });
+  uiHide(dollBtns, { fadeMs: 0 });
 
-// ✅ hard display toggles so buttons cannot “linger”
-if (navWrap) navWrap.style.display = which === "pano" ? "" : "none";
-if (dollBtns) dollBtns.style.display = which === "dollhouse" ? "" : "none";
+  // ✅ hard display toggles so buttons cannot “linger”
+  if (navWrap) navWrap.style.display = which === "pano" ? "" : "none";
+  if (dollBtns) dollBtns.style.display = which === "dollhouse" ? "" : "none";
 
-if (indicator) {
-  indicator.style.display = "none";
-  indicator.style.opacity = "0";
-  indicator.style.pointerEvents = "none";
-}
+  if (indicator) {
+    indicator.style.display = "none";
+    indicator.style.opacity = "0";
+    indicator.style.pointerEvents = "none";
+  }
+
   if (which !== "pano") {
     // Hide room label unless you are hovering nodes (handled by hover logic)
     hideRoomLabelText();
   } else {
     // restore current label immediately
     setRoomLabel(state.index);
+
+    // ✅ re-emit current node to the parent listing page (even if index didn’t change)
+    if (typeof emitListingNodeChange === "function") {
+      emitListingNodeChange(state.index, "setMode:pano");
+    }
   }
 
   orbit.enabled = which === "dollhouse";
@@ -715,16 +793,15 @@ if (tabPano) {
     blankPanoSphere();
     try {
       const tex = await ensurePanoLoaded(state.index);
-     setSphereMap(tex);
-requestAnimationFrame(() => fadeInPano(220));
-revealPanoUIWhenReady();
+      setSphereMap(tex);
+      requestAnimationFrame(() => fadeInPano(220));
+      revealPanoUIWhenReady();
     } catch (e) {
       console.warn("tabPano: failed to reload pano:", e);
       ensurePanoUIActive();
     }
   });
 }
-
 // -----------------------------
 // Pano camera yaw/pitch
 // -----------------------------
