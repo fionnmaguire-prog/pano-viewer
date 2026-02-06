@@ -22,11 +22,49 @@ const forwardBtn = document.getElementById("forwardBtn");
 const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
-// Prevent logo from being clipped when scaled up
-if (brandLink) {
-  brandLink.style.right = "20px";   // was effectively 0 before
-  brandLink.style.left = "auto";
+// Brand link positioning:
+// We want the *logo* state to sit a bit further in from the corner (so it never clips when scaled),
+// but we want the *text pill* state to stay exactly where your CSS originally places it.
+const BRAND_LOGO_RIGHT_INSET_PX = 44; // increase/decrease to taste
+const BRAND_LOGO_TOP_INSET_PX = 16;   // fixes slight top clipping when scaled
+
+// Cache the ORIGINAL positioning styles so we can restore them for the text state.
+const __brandLinkPosStyle = brandLink
+  ? {
+      right: brandLink.style.right,
+      left: brandLink.style.left,
+      top: brandLink.style.top,
+      bottom: brandLink.style.bottom,
+      transform: brandLink.style.transform,
+      overflow: brandLink.style.overflow,
+    }
+  : null;
+
+function setBrandLinkLogoPositionEnabled(enabled) {
+  if (!brandLink) return;
+
+  // Always allow transforms to render beyond the element box
   brandLink.style.overflow = "visible";
+
+  if (enabled) {
+    // Nudge the wrapper inward so the 400% scaled logo never clips
+    brandLink.style.left = "auto";
+    brandLink.style.bottom = __brandLinkPosStyle?.bottom ?? "";
+    brandLink.style.right = `${BRAND_LOGO_RIGHT_INSET_PX}px`;
+    brandLink.style.top = `${BRAND_LOGO_TOP_INSET_PX}px`;
+    // Remove any CSS transform that might be used for the pill state
+    brandLink.style.transform = "";
+  } else {
+    // Restore the original CSS-driven positioning for the text pill state
+    if (__brandLinkPosStyle) {
+      brandLink.style.right = __brandLinkPosStyle.right;
+      brandLink.style.left = __brandLinkPosStyle.left;
+      brandLink.style.top = __brandLinkPosStyle.top;
+      brandLink.style.bottom = __brandLinkPosStyle.bottom;
+      brandLink.style.transform = __brandLinkPosStyle.transform;
+      brandLink.style.overflow = __brandLinkPosStyle.overflow || "visible";
+    }
+  }
 }
 let brandSwapTimer = null;
 
@@ -38,6 +76,12 @@ const __brandLinkPillStyle = brandLink
       borderRadius: brandLink.style.borderRadius,
       boxShadow: brandLink.style.boxShadow,
       backdropFilter: brandLink.style.backdropFilter,
+      right: brandLink.style.right,
+      left: brandLink.style.left,
+      top: brandLink.style.top,
+      bottom: brandLink.style.bottom,
+      transform: brandLink.style.transform,
+      overflow: brandLink.style.overflow,
     }
   : null;
 
@@ -53,6 +97,8 @@ function setBrandLinkPillEnabled(enabled) {
       brandLink.style.boxShadow = __brandLinkPillStyle.boxShadow;
       brandLink.style.backdropFilter = __brandLinkPillStyle.backdropFilter;
     }
+    // Text pill: keep original positioning
+    setBrandLinkLogoPositionEnabled(false);
   } else {
     // Logo-only state: no pill/transparent background around the PNG
     brandLink.style.background = "transparent";
@@ -60,6 +106,8 @@ function setBrandLinkPillEnabled(enabled) {
     brandLink.style.borderRadius = "0";
     brandLink.style.boxShadow = "none";
     brandLink.style.backdropFilter = "none";
+    // Logo-only: apply inward positioning so the scaled logo never clips
+    setBrandLinkLogoPositionEnabled(true);
   }
 }
 
@@ -103,6 +151,8 @@ function showBrandUIHard() {
 
   // When revealing, we start in the LOGO state (no pill around the logo)
   setBrandLinkPillEnabled(false);
+  // Ensure logo positioning (inset) is active immediately
+  setBrandLinkLogoPositionEnabled(true);
 
   // Ensure logo is visible and text is hidden initially
   if (brandLogo) brandLogo.classList.remove("hidden");
@@ -283,6 +333,7 @@ function startBrandSwapTimer(delayMs = 10000) {
   brandText.classList.add("hidden");
   // Logo state: wrapper pill OFF so nothing extends around the PNG
   setBrandLinkPillEnabled(false);
+  setBrandLinkLogoPositionEnabled(true);
 
   brandSwapTimer = setTimeout(() => {
     // Guard again at fire-time
@@ -291,6 +342,7 @@ function startBrandSwapTimer(delayMs = 10000) {
     brandText.classList.remove("hidden");
     // Text state: wrapper pill ON so the pill surrounds the domain text
     setBrandLinkPillEnabled(true);
+    setBrandLinkLogoPositionEnabled(false);
   }, delayMs);
 }
 
