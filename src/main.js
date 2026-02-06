@@ -105,7 +105,7 @@ function showBrandUIHard() {
   // Grow logo to 400% once visible
   if (brandLogo) {
     requestAnimationFrame(() => {
-      brandLogo.style.transform = "scale(4)";
+      brandLogo.style.transform = "scale(2.5)";
     });
   }
 }
