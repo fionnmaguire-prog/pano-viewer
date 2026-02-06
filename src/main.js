@@ -2568,6 +2568,7 @@ async function init() {
   if (dollBtns) dollBtns.classList.add("hidden");
   if (tabPano) tabPano.style.display = "none";
   if (tabDollhouse) tabDollhouse.style.display = "none";
+  if (brandLink) brandLink.classList.add("hidden");
 
   blankPanoSphere();
 
@@ -2624,6 +2625,9 @@ async function init() {
       async () => {
         startBtn.disabled = true;
 
+        // Keep brand link hidden during the begin->intro transition (prevents 1-frame flash)
+        if (brandLink) brandLink.classList.add("hidden");
+
         startBrandSwapTimer(10000);
         if (startCard) startCard.classList.add("hidden");
         if (startOverlay) startOverlay.classList.add("videoMode");
@@ -2677,6 +2681,8 @@ requestAnimationFrame(() => fadeInPano(450));
           // Reveal tour UI only AFTER intro video completes
           if (tabPano) tabPano.style.display = "";
           if (tabDollhouse) tabDollhouse.style.display = "";
+          // Now that the intro is finished, allow the brand link to appear
+          if (brandLink) brandLink.classList.remove("hidden");
 
           preloadPromise.then(() => console.log("✅ background preload complete"));
         } catch (e) {
