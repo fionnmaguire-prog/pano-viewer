@@ -27,9 +27,13 @@ let brandSwapTimer = null;
 // Ensure the <img> points at the bundled asset (prevents broken-image/alt-text display)
 if (brandLogo) {
   brandLogo.src = brandLogoUrl;
-  // Hint to load/paint ASAP so the first visible frame is already correct
   brandLogo.decoding = "async";
   brandLogo.loading = "eager";
+
+  // Start larger to avoid tiny first-frame render
+  brandLogo.style.transformOrigin = "center center";
+  brandLogo.style.transform = "scale(2)";
+  brandLogo.style.transition = "transform 260ms ease";
 }
 
 function hideBrandUIHard() {
@@ -48,9 +52,16 @@ function hideBrandUIHard() {
 
 function showBrandUIHard() {
   if (!brandLink) return;
-  // Re-enable and let the normal swap behavior manage logo/text
+
   brandLink.style.display = "";
   brandLink.classList.remove("hidden");
+
+  // Ease logo back to normal size once visible
+  if (brandLogo) {
+    requestAnimationFrame(() => {
+      brandLogo.style.transform = "scale(1)";
+    });
+  }
 }
 
 // Tabs
