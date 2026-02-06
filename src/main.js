@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import brandLogoUrl from "./assets/rtf-logo.png";
 
 // -----------------------------
 // DOM
@@ -22,6 +23,14 @@ const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
 let brandSwapTimer = null;
+
+// Ensure the <img> points at the bundled asset (prevents broken-image/alt-text display)
+if (brandLogo) {
+  brandLogo.src = brandLogoUrl;
+  // Hint to load/paint ASAP so the first visible frame is already correct
+  brandLogo.decoding = "async";
+  brandLogo.loading = "eager";
+}
 
 function hideBrandUIHard() {
   if (!brandLink) return;
