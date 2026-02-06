@@ -47,11 +47,16 @@ function setBrandLinkLogoPositionEnabled(enabled) {
   brandLink.style.overflow = "visible";
 
   if (enabled) {
-    // Nudge the wrapper inward so the 400% scaled logo never clips
+    // Nudge the wrapper inward so the 400% scaled logo never clips (RIGHT stays as-is)
     brandLink.style.left = "auto";
     brandLink.style.bottom = __brandLinkPosStyle?.bottom ?? "";
     brandLink.style.right = `${BRAND_LOGO_RIGHT_INSET_PX}px`;
-    brandLink.style.top = `${BRAND_LOGO_TOP_INSET_PX}px`;
+
+    // ✅ Move the LOGO state down a bit (so top spacing matches right spacing visually)
+    // Tune this number if needed (6–14px typical).
+    const LOGO_TOP_EXTRA_PX = 8;
+    brandLink.style.top = `${BRAND_LOGO_TOP_INSET_PX + LOGO_TOP_EXTRA_PX}px`;
+
     // Remove any CSS transform that might be used for the pill state
     brandLink.style.transform = "";
   } else {
