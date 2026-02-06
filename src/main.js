@@ -171,6 +171,25 @@ function showBrandUIHard() {
   }
 }
 
+let ROOM_ID_BY_NAME = new Map();
+
+function buildRoomIdMapFromTour() {
+  ROOM_ID_BY_NAME = new Map();
+  const list = Array.isArray(TOUR?.rooms) ? TOUR.rooms : [];
+  let nextId = 1;
+  for (const raw of list) {
+    const name = (raw ?? "").toString().trim();
+    if (!name) continue;
+    if (!ROOM_ID_BY_NAME.has(name)) {
+      ROOM_ID_BY_NAME.set(name, nextId++);
+    }
+  }
+}
+
+function getRoomIdForIndex(i) {
+  const name = getRoomLabelForIndex(i);
+  return ROOM_ID_BY_NAME.get(name) || 0;
+}
 // Tabs
 const tabPano = document.getElementById("tabPano");
 const tabDollhouse = document.getElementById("tabDollhouse");
@@ -394,7 +413,14 @@ function getParentOrigin() {
   const fromParam = params.get("parentOrigin");
   if (fromParam) return fromParam;
 
-  // Try to infer from referrer (works when embedded as an iframe)
+  // If embedded, try to infer from the parent origin.
+  // Note: document.referrer can be empty when embedding https -> http (localhost)
+  // due to referrer policy. ancestorOrigins is available in Chromium-based browsers.
+  try {
+    const ao = location.ancestorOrigins;
+    if (ao && ao.length) return ao[0];
+  } catch {}
+
   try {
     if (document.referrer) return new URL(document.referrer).origin;
   } catch {}
@@ -417,20 +443,40 @@ function emitListingNodeChange(panoIndex, source = "") {
     roomName = (typeof getRoomLabelForIndex === "function" ? getRoomLabelForIndex(idx) : "") || "";
   } catch {}
 
+  let roomId = 0;
   try {
-    window.parent?.postMessage(
-      {
-        type: "RTF_NODE_CHANGE",
-        tourId: getTourId(),
-        panoIndex: idx,       // 0-based index for code
-        nodeNumber: idx + 1,  // 1-based for humans
-        roomName,
-        mode,                 // expected: "pano" | "dollhouse"
-        source,               // debug string for tracing
-      },
-      LISTING_PARENT_ORIGIN
-    );
-  } catch {
+    // Uses the derived map built from TOUR.rooms (see buildRoomIdMapFromTour())
+    roomId = (typeof getRoomIdForIndex === "function" ? getRoomIdForIndex(idx) : 0) || 0;
+  } catch {}
+
+  const msg = {
+    type: "RTF_NODE_CHANGE",
+    tourId: getTourId(),
+    panoIndex: idx,       // 0-based index for code
+    nodeNumber: idx + 1,  // 1-based for humans
+    roomName,             // e.g. "LIVING ROOM"
+    roomId,               // stable numeric ID derived from TOUR.rooms order
+    mode,                 // expected: "pano" | "dollhouse"
+    source,               // debug string for tracing
+  };
+
+  // Optional: enable debug with ?debug=1
+  const params = new URLSearchParams(location.search);
+  const debug = params.get("debug") === "1";
+
+  try {
+    if (debug) {
+      const embedded = window.parent && window.parent !== window;
+      console.log("[RTF postMessage]", {
+        embedded,
+        targetOrigin: LISTING_PARENT_ORIGIN,
+        msg,
+      });
+    }
+
+    window.parent?.postMessage(msg, LISTING_PARENT_ORIGIN);
+  } catch (e) {
+    if (debug) console.warn("[RTF postMessage] failed", e);
     // Never crash the player due to cross-origin / embedding issues
   }
 }
@@ -466,6 +512,7 @@ async function loadTourConfig() {
   const res = await fetch(`${TOUR_BASE}tour.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load tour.json for tour=${id}`);
   TOUR = await res.json();
+  buildRoomIdMapFromTour();
 }
 // -----------------------------
 // Intro video
