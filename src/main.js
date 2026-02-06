@@ -22,6 +22,12 @@ const forwardBtn = document.getElementById("forwardBtn");
 const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
 const brandText = document.getElementById("brandText");
+// Prevent logo from being clipped when scaled up
+if (brandLink) {
+  brandLink.style.right = "20px";   // was effectively 0 before
+  brandLink.style.left = "auto";
+  brandLink.style.overflow = "visible";
+}
 let brandSwapTimer = null;
 
 // Cache the pill styling on the wrapper so we can disable it for the logo-only state
