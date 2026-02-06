@@ -30,10 +30,11 @@ if (brandLogo) {
   brandLogo.decoding = "async";
   brandLogo.loading = "eager";
 
-  // Start larger to avoid tiny first-frame render
+  // Start small, then grow to 200% when the brand UI is revealed
+  // (reset back to 1x whenever we hard-hide so the animation can replay)
   brandLogo.style.transformOrigin = "center center";
-  brandLogo.style.transform = "scale(2)";
-  brandLogo.style.transition = "transform 260ms ease";
+  brandLogo.style.transform = "scale(1)";
+  brandLogo.style.transition = "transform 520ms ease"; // slower grow than prior 260ms shrink
 }
 
 function hideBrandUIHard() {
@@ -43,6 +44,9 @@ function hideBrandUIHard() {
   brandLink.style.display = "none";
   if (brandLogo) brandLogo.classList.add("hidden");
   if (brandText) brandText.classList.add("hidden");
+
+  // Reset logo scale so next reveal animates from small -> 200%
+  if (brandLogo) brandLogo.style.transform = "scale(1)";
 
   if (brandSwapTimer) {
     clearTimeout(brandSwapTimer);
@@ -56,10 +60,10 @@ function showBrandUIHard() {
   brandLink.style.display = "";
   brandLink.classList.remove("hidden");
 
-  // Ease logo back to normal size once visible
+  // Grow logo to 200% once visible
   if (brandLogo) {
     requestAnimationFrame(() => {
-      brandLogo.style.transform = "scale(1)";
+      brandLogo.style.transform = "scale(2)";
     });
   }
 }
