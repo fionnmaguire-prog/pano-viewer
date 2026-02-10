@@ -467,6 +467,99 @@ function emitListingNodeChange(panoIndex, source = "") {
   }
 }
 
+// -----------------------------
+// Listing -> Player commands (postMessage listener)
+// -----------------------------
+// Allows the LISTING page to command the player to navigate to a specific node.
+// Expected messages:
+//   { type: "RTF_GOTO_NODE", nodeId: 12 }
+//   { type: "RTF_GOTO_NODE", panoIndex: 11 }
+// Optional:
+//   { type: "RTF_SET_MODE", mode: "pano" | "dollhouse" }
+
+function __isAllowedListingOrigin(origin) {
+  // If we somehow resolved "*" (shouldn't happen here), allow.
+  if (!LISTING_PARENT_ORIGIN || LISTING_PARENT_ORIGIN === "*") return true;
+  return origin === LISTING_PARENT_ORIGIN;
+}
+
+function __coerceTargetIndex(data) {
+  const panoIndex = Number(data?.panoIndex);
+  if (Number.isFinite(panoIndex) && panoIndex >= 0) return panoIndex;
+
+  const nodeId = Number(data?.nodeId);
+  if (Number.isFinite(nodeId) && nodeId > 0) return nodeId - 1; // nodeId is 1-based
+
+  return null;
+}
+
+window.addEventListener("message", async (event) => {
+  if (!__isAllowedListingOrigin(event.origin)) return;
+
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+
+  const params = new URLSearchParams(location.search);
+  const debug = params.get("debug") === "1";
+
+  try {
+    // 1) Optional explicit mode switching
+    if (data.type === "RTF_SET_MODE") {
+      const m = (data.mode || "").toString();
+      if (m === "pano") {
+        if (state.isTransitioning) cancelActivePanoTransition("RTF_SET_MODE:pano");
+        setMode("pano");
+        blankPanoSphere();
+        const tex = await ensurePanoLoaded(state.index);
+        setSphereMap(tex);
+        requestAnimationFrame(() => fadeInPano(220));
+        revealPanoUIWhenReady();
+      } else if (m === "dollhouse") {
+        // Prefer the existing click handler flow for entering dollhouse
+        tabDollhouse?.click?.();
+      }
+
+      if (debug) console.log("[RTF message] SET_MODE", { from: event.origin, data });
+      return;
+    }
+
+    // 2) Navigate to a specific node
+    if (data.type === "RTF_GOTO_NODE") {
+      const targetIndex = __coerceTargetIndex(data);
+      if (targetIndex == null) return;
+
+      // Clamp to pano range if PANOS not ready yet
+      const max = (Array.isArray(PANOS) && PANOS.length) ? PANOS.length - 1 : null;
+      const idx = max == null ? targetIndex : Math.max(0, Math.min(max, targetIndex));
+
+      if (debug) console.log("[RTF message] GOTO_NODE", { from: event.origin, idx, data });
+
+      // If we're currently in dollhouse, use the existing hard jump into pano.
+      if (mode !== "pano") {
+        await jumpToPano(idx);
+        return;
+      }
+
+      // If we're already there, just re-emit (keeps listing in sync)
+      if (idx === state.index) {
+        updateIndicator(state.index);
+        return;
+      }
+
+      // Prefer smooth transition only for adjacent moves; otherwise hard jump.
+      if (!state.isTransitioning && Math.abs(idx - state.index) === 1) {
+        await goTo(idx);
+      } else {
+        await jumpToPano(idx);
+      }
+
+      return;
+    }
+  } catch (e) {
+    if (debug) console.warn("[RTF message] handler error", e);
+  }
+});
+
 let TOUR = null;
 let TOUR_BASE = "";
 
