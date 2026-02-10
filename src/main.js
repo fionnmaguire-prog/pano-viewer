@@ -460,17 +460,10 @@ function emitListingNodeChange(panoIndex, source = "") {
         msg,
       });
     }
-
-    window.parent?.postMessage(msg, LISTING_PARENT_ORIGIN);
+    const targetOrigin = LISTING_PARENT_ORIGIN && LISTING_PARENT_ORIGIN !== "null" ? LISTING_PARENT_ORIGIN : "*";
+    window.parent?.postMessage(msg, targetOrigin);
   } catch (e) {
     if (debug) console.warn("[RTF postMessage] failed", e);
-  }
-}
-
-    window.parent?.postMessage(msg, LISTING_PARENT_ORIGIN);
-  } catch (e) {
-    if (debug) console.warn("[RTF postMessage] failed", e);
-    // Never crash the player due to cross-origin / embedding issues
   }
 }
 
