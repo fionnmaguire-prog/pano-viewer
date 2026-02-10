@@ -171,24 +171,15 @@ function showBrandUIHard() {
   }
 }
 
-let ROOM_ID_BY_NAME = new Map();
-
-function buildRoomIdMapFromTour() {
-  ROOM_ID_BY_NAME = new Map();
-  const list = Array.isArray(TOUR?.rooms) ? TOUR.rooms : [];
-  let nextId = 1;
-  for (const raw of list) {
-    const name = (raw ?? "").toString().trim();
-    if (!name) continue;
-    if (!ROOM_ID_BY_NAME.has(name)) {
-      ROOM_ID_BY_NAME.set(name, nextId++);
-    }
-  }
-}
-
-function getRoomIdForIndex(i) {
-  const name = getRoomLabelForIndex(i);
-  return ROOM_ID_BY_NAME.get(name) || 0;
+// -----------------------------
+// Node id helpers (UNIQUE per pano)
+// -----------------------------
+// We emit a unique id per pano/node so the listing page can decide
+// how to group nodes into rooms (prevents duplicate room-name collisions).
+function getNodeIdForIndex(i) {
+  const idx = Number(i);
+  if (!Number.isFinite(idx) || idx < 0) return 0;
+  return idx + 1; // 1-based node id
 }
 // Tabs
 const tabPano = document.getElementById("tabPano");
@@ -512,7 +503,6 @@ async function loadTourConfig() {
   const res = await fetch(`${TOUR_BASE}tour.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load tour.json for tour=${id}`);
   TOUR = await res.json();
-  buildRoomIdMapFromTour();
 }
 // -----------------------------
 // Intro video
