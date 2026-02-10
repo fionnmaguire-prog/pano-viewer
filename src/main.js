@@ -434,24 +434,20 @@ function emitListingNodeChange(panoIndex, source = "") {
     roomName = (typeof getRoomLabelForIndex === "function" ? getRoomLabelForIndex(idx) : "") || "";
   } catch {}
 
-  let roomId = 0;
-  try {
-    // Uses the derived map built from TOUR.rooms (see buildRoomIdMapFromTour())
-    roomId = (typeof getRoomIdForIndex === "function" ? getRoomIdForIndex(idx) : 0) || 0;
-  } catch {}
+  const nodeId = getNodeIdForIndex(idx);
 
   const msg = {
     type: "RTF_NODE_CHANGE",
     tourId: getTourId(),
-    panoIndex: idx,       // 0-based index for code
-    nodeNumber: idx + 1,  // 1-based for humans
-    roomName,             // e.g. "LIVING ROOM"
-    roomId,               // stable numeric ID derived from TOUR.rooms order
-    mode,                 // expected: "pano" | "dollhouse"
-    source,               // debug string for tracing
+
+    panoIndex: idx,     // 0-based index
+    nodeId,             // 1-based unique id (panoIndex + 1)
+    roomName,           // whatever is in TOUR.rooms for this pano
+
+    mode,               // "pano" | "dollhouse"
+    source,             // debug tracer
   };
 
-  // Optional: enable debug with ?debug=1
   const params = new URLSearchParams(location.search);
   const debug = params.get("debug") === "1";
 
@@ -464,6 +460,12 @@ function emitListingNodeChange(panoIndex, source = "") {
         msg,
       });
     }
+
+    window.parent?.postMessage(msg, LISTING_PARENT_ORIGIN);
+  } catch (e) {
+    if (debug) console.warn("[RTF postMessage] failed", e);
+  }
+}
 
     window.parent?.postMessage(msg, LISTING_PARENT_ORIGIN);
   } catch (e) {
