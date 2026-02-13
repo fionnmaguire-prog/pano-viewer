@@ -13,10 +13,14 @@ import brandLogoUrl from "./assets/rtf-logo.png";
 // DOM
 // -----------------------------
 const container = document.getElementById("app");
+const playerShell = document.getElementById("playerShell");
+const playerStage = document.getElementById("playerStage");
 const navWrap = document.getElementById("navWrap");
 const indicator = document.getElementById("indicator");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
+const PLAYER_BASE_WIDTH = 1700;
+const PLAYER_BASE_HEIGHT = PLAYER_BASE_WIDTH * (9 / 16);
 
 // Brand link UI
 const brandLink = document.getElementById("brandLink");
@@ -298,6 +302,27 @@ if (!container) throw new Error("#app container not found");
 const cs = window.getComputedStyle(container);
 if (cs.position === "static") container.style.position = "relative";
 
+function applyPlayerScale() {
+  if (!playerShell || !playerStage || !container) return;
+
+  const shellRect = playerShell.getBoundingClientRect();
+  const shellStyles = window.getComputedStyle(playerShell);
+  const padX =
+    (parseFloat(shellStyles.paddingLeft) || 0) + (parseFloat(shellStyles.paddingRight) || 0);
+  const padY =
+    (parseFloat(shellStyles.paddingTop) || 0) + (parseFloat(shellStyles.paddingBottom) || 0);
+
+  const availableW = Math.max(1, shellRect.width - padX);
+  const availableH = Math.max(1, shellRect.height - padY);
+  const scale = Math.min(1, availableW / PLAYER_BASE_WIDTH, availableH / PLAYER_BASE_HEIGHT);
+  const scaledW = PLAYER_BASE_WIDTH * scale;
+  const scaledH = PLAYER_BASE_HEIGHT * scale;
+
+  playerStage.style.width = `${scaledW}px`;
+  playerStage.style.height = `${scaledH}px`;
+  container.style.transform = `scale(${scale})`;
+}
+
 // -----------------------------
 // Room label UI (bottom-left)
 // -----------------------------
@@ -307,7 +332,7 @@ Object.assign(roomLabelEl.style, {
   position: "absolute",
   left: "16px",
   bottom: "16px",
-  padding: "10px 12px",
+  padding: "12px 16px",
   borderRadius: "12px",
   border: "var(--container-stroke-width) solid transparent",
   background:
@@ -317,8 +342,8 @@ Object.assign(roomLabelEl.style, {
     "inset 0 1px 0 var(--chrome-specular-top), inset 0 -1px 0 rgba(89, 102, 124, 0.56), inset 1px 0 0 var(--chrome-specular-edge), 0 10px 18px rgba(10, 14, 24, 0.35)",
   color: "#fff",
   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-  fontSize: "13px",
-  fontWeight: "600",
+  fontSize: "15px",
+  fontWeight: "700",
   letterSpacing: "0.4px",
   textTransform: "uppercase",
   zIndex: "20",
@@ -626,6 +651,29 @@ function hideStartOverlay() {
   startOverlay.classList.add("hidden");
 }
 
+function waitForFirstIntroFrame(videoEl, timeoutMs = 420) {
+  return new Promise((resolve) => {
+    let done = false;
+    let timeoutId = null;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      resolve();
+    };
+
+    timeoutId = setTimeout(finish, timeoutMs);
+
+    if (typeof videoEl.requestVideoFrameCallback === "function") {
+      videoEl.requestVideoFrameCallback(() => finish());
+      return;
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(finish));
+  });
+}
+
 async function playIntroVideoOnce() {
   if (!introVideoEl) return;
 
@@ -638,7 +686,7 @@ async function playIntroVideoOnce() {
 
   introVideoEl.src = getIntroVideoUrl();
   introVideoEl.load();
-  introVideoEl.classList.add("show");
+  introVideoEl.classList.remove("show");
 
   await new Promise((resolve, reject) => {
     const onReady = () => cleanup(resolve);
@@ -656,6 +704,8 @@ async function playIntroVideoOnce() {
 
   try {
     await introVideoEl.play();
+    await waitForFirstIntroFrame(introVideoEl);
+    introVideoEl.classList.add("show");
   } catch (e) {
     console.warn("Intro video play failed:", e);
     if (startOverlay) startOverlay.classList.remove("videoMode");
@@ -751,6 +801,91 @@ loadingCard.appendChild(loadingPct);
 loadingOverlay.appendChild(loadingCard);
 container.appendChild(loadingOverlay);
 
+function applyLoadingPresentation({ position = "bottom", variant = "default" } = {}) {
+  const topAligned = position === "top";
+  const centerAligned = position === "center";
+  loadingOverlay.style.alignItems = topAligned
+    ? "flex-start"
+    : centerAligned
+      ? "center"
+      : "flex-end";
+  loadingOverlay.style.paddingTop = topAligned ? "16px" : "0";
+  loadingOverlay.style.paddingBottom = topAligned || centerAligned ? "0" : "78px";
+
+  if (variant === "chrome") {
+    Object.assign(loadingCard.style, {
+      minWidth: "280px",
+      maxWidth: "520px",
+      width: "44%",
+      padding: "14px 16px 12px",
+      borderRadius: "14px",
+      border: "var(--container-stroke-width) solid transparent",
+      background:
+        "linear-gradient(var(--midnight-purple), var(--midnight-purple)) padding-box, var(--chrome-stroke-material) border-box",
+      backgroundClip: "padding-box, border-box",
+      backdropFilter: "none",
+      boxShadow:
+        "inset 0 1px 0 var(--chrome-specular-top), inset 0 -1px 0 rgba(89, 102, 124, 0.56), inset 1px 0 0 var(--chrome-specular-edge), 0 12px 22px rgba(10, 14, 24, 0.42)",
+    });
+    Object.assign(loadingText.style, {
+      color: "rgba(255,255,255,0.96)",
+      fontSize: "12px",
+      fontWeight: "700",
+      letterSpacing: "0.08em",
+      marginBottom: "10px",
+    });
+    Object.assign(loadingBarOuter.style, {
+      height: "8px",
+      background: "rgba(255,255,255,0.24)",
+      border: "1px solid rgba(255,255,255,0.24)",
+    });
+    Object.assign(loadingBarInner.style, {
+      background: "rgba(255,255,255,0.96)",
+    });
+    Object.assign(loadingPct.style, {
+      color: "rgba(255,255,255,0.92)",
+      fontSize: "12px",
+      fontWeight: "700",
+      marginTop: "10px",
+    });
+    return;
+  }
+
+  Object.assign(loadingCard.style, {
+    minWidth: "260px",
+    maxWidth: "420px",
+    width: "42%",
+    padding: "14px 14px 12px",
+    borderRadius: "12px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.65)",
+    backgroundClip: "border-box",
+    backdropFilter: "blur(8px)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+  });
+  Object.assign(loadingText.style, {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: "12px",
+    fontWeight: "600",
+    letterSpacing: "0.4px",
+    marginBottom: "10px",
+  });
+  Object.assign(loadingBarOuter.style, {
+    height: "8px",
+    background: "rgba(255,255,255,0.14)",
+    border: "none",
+  });
+  Object.assign(loadingBarInner.style, {
+    background: "rgba(255,255,255,0.92)",
+  });
+  Object.assign(loadingPct.style, {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: "12px",
+    fontWeight: "600",
+    marginTop: "10px",
+  });
+}
+
 function setLoadingVisible(visible, text = "Loading…") {
   loadingOverlay.style.display = visible ? "flex" : "none";
   if (visible) {
@@ -763,8 +898,28 @@ function setLoadingProgress(p01) {
   loadingBarInner.style.width = `${Math.round(p * 100)}%`;
   loadingPct.textContent = `${Math.round(p * 100)}%`;
 }
-function beginProgressSession(label = "Loading…") {
+function beginProgressSession(
+  label = "Loading…",
+  { position = "bottom", variant = "default", minVisibleMs = 0 } = {}
+) {
   let active = true;
+  const visibleStartedAt = performance.now();
+  let hideDelayTimer = null;
+  let hideFadeTimer = null;
+  let finishPromise = null;
+  let finishResolved = false;
+  let resolveFinishPromise = null;
+
+  const resolveFinish = () => {
+    if (finishResolved) return;
+    finishResolved = true;
+    if (resolveFinishPromise) {
+      resolveFinishPromise();
+      resolveFinishPromise = null;
+    }
+  };
+
+  applyLoadingPresentation({ position, variant });
   setLoadingVisible(true, label);
 
   const tasks = new Map();
@@ -801,13 +956,35 @@ function beginProgressSession(label = "Loading…") {
   };
 
   const finish = () => {
+    if (finishPromise) return finishPromise;
     active = false;
     setLoadingProgress(1);
-    setTimeout(() => setLoadingVisible(false), 180);
+    finishPromise = new Promise((resolve) => {
+      resolveFinishPromise = resolve;
+      const elapsed = performance.now() - visibleStartedAt;
+      const holdMs = Math.max(0, Number(minVisibleMs) - elapsed);
+
+      hideDelayTimer = setTimeout(() => {
+        hideFadeTimer = setTimeout(() => {
+          setLoadingVisible(false);
+          resolveFinish();
+        }, 180);
+      }, holdMs);
+    });
+    return finishPromise;
   };
   const cancel = () => {
     active = false;
+    if (hideDelayTimer) {
+      clearTimeout(hideDelayTimer);
+      hideDelayTimer = null;
+    }
+    if (hideFadeTimer) {
+      clearTimeout(hideFadeTimer);
+      hideFadeTimer = null;
+    }
     setLoadingVisible(false);
+    resolveFinish();
   };
 
   return { task, finish, cancel };
@@ -1972,7 +2149,7 @@ const FULL_SPIN_RAD = Math.PI * 2;
 const FULL_SPIN_SIGN = 1;
 
 const RETURN_ROTATE_MS_NORMAL = 1400;
-const RETURN_ROTATE_MS_FULLSPIN = 2600;
+const RETURN_ROTATE_MS_FULLSPIN = 2100;
 
 function getPanoLookDeltaForIndex(i) {
   const heroYaw = HERO[i]?.yaw ?? 0;
@@ -2155,7 +2332,7 @@ async function ensureBestModelHasNode(panoIndex) {
 // When entering dollhouse from pano: start near current pano's node, match pano yaw, then zoom out + rotate back to default.
 async function resetDollhouseFromCurrentPano(
   animated = true,
-  { onPrepared = null, onSpinStart = null } = {}
+  { onPrepared = null, onSpinStart = null, allowFullSpin = true } = {}
 ) {
   if (!defaultDollView) return;
   if (!refCenter) return;
@@ -2172,7 +2349,7 @@ async function resetDollhouseFromCurrentPano(
     getPanoLookDeltaForIndex(state.index) * PANO_TO_DOLL_GAIN * PANO_TO_DOLL_SIGN;
 
   // If user didn’t rotate in pano, do a full spin on return (purely aesthetic)
-  const shouldFullSpin = Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
+  const shouldFullSpin = allowFullSpin && Math.abs(panoDeltaRaw) < NO_INPUT_EPS_RAD;
 
   // We want to end EXACTLY at the default dollhouse orientation.
   // To do that reliably (without double-rotation), we:
@@ -3028,6 +3205,7 @@ if (btnDown) {
 // -----------------------------
 let dollhouseEnterToken = 0;
 let hasShownInitialDollhouseLoader = false;
+const DOLLHOUSE_FIRST_LOADER_MIN_VISIBLE_MS = 1000;
 
 if (tabDollhouse) {
   tabDollhouse.addEventListener("click", async () => {
@@ -3076,7 +3254,11 @@ if (tabDollhouse) {
       let tModel = null;
 
       if (shouldShowLoader) {
-        pm = beginProgressSession("Loading dollhouse…");
+        pm = beginProgressSession("Loading dollhouse…", {
+          position: "center",
+          variant: "chrome",
+          minVisibleMs: DOLLHOUSE_FIRST_LOADER_MIN_VISIBLE_MS,
+        });
         tRef = pm.task("reference", 2.0);
         tModel = pm.task("model", 3.0);
       }
@@ -3084,7 +3266,7 @@ if (tabDollhouse) {
       // 5) Hard guarantee black while loading
       fadeOverlay.style.opacity = "1";
       if (!stillValid()) {
-        pm?.finish?.();
+        pm?.cancel?.();
         return;
       }
 
@@ -3100,7 +3282,7 @@ if (tabDollhouse) {
       await ensureReferenceReady();
       tRef?.done?.();
       if (!stillValid()) {
-        pm?.finish?.();
+        pm?.cancel?.();
         return;
       }
 
@@ -3111,7 +3293,7 @@ if (tabDollhouse) {
       );
       tModel?.done?.();
       if (!stillValid()) {
-        pm?.finish?.();
+        pm?.cancel?.();
         return;
       }
 
@@ -3171,9 +3353,7 @@ if (tabDollhouse) {
           // Ensure the loader is fully done BEFORE any reveal/anim
           if (pm) {
             hasShownInitialDollhouseLoader = true;
-            pm.finish();
-            // pm.finish hides the loader after ~180ms
-            await sleep(210);
+            await pm.finish();
             pm = null;
           }
 
@@ -3187,6 +3367,7 @@ if (tabDollhouse) {
           let firstRevealWipePromise = null;
 
           const resetPromise = resetDollhouseFromCurrentPano(true, {
+            allowFullSpin: false,
             onPrepared: () => preparedResolve && preparedResolve(),
             onSpinStart: () => {
               if (firstRevealWipePromise) return;
@@ -3362,8 +3543,16 @@ function resizeRenderer() {
   renderer.setSize(w, h);
   if (refReady) applyReferenceClippingAndLimits();
 }
-window.addEventListener("resize", resizeRenderer);
-new ResizeObserver(() => resizeRenderer()).observe(container);
+function handleViewportResize() {
+  applyPlayerScale();
+  resizeRenderer();
+}
+window.addEventListener("resize", handleViewportResize);
+if (playerShell) {
+  new ResizeObserver(() => handleViewportResize()).observe(playerShell);
+} else {
+  new ResizeObserver(() => handleViewportResize()).observe(container);
+}
 
 // -----------------------------
 // Init
@@ -3430,102 +3619,145 @@ async function init() {
   if (startBtn) {
     startBtn.disabled = false;
 
-    startBtn.addEventListener(
-      "click",
-      async () => {
-        const skipIntro = skipIntroOnNextBegin;
-        skipIntroOnNextBegin = false;
-        startBtn.disabled = true;
+    const BEGIN_SKIP_MULTI_CLICK_COUNT = 3;
+    const BEGIN_SKIP_MULTI_CLICK_WINDOW_MS = 420;
 
-        // Hard-hide brand UI during begin -> intro to prevent any flicker
-        hideBrandUIHard();
-        if (startCard) startCard.classList.add("hidden");
-        if (!skipIntro && startOverlay) startOverlay.classList.add("videoMode");
+    let beginClickCount = 0;
+    let beginClickTimer = null;
+    let beginLaunchInProgress = false;
 
-        const preloadPromise = preloadStartAssets().catch((e) => {
-          console.warn("Preload assets failed (continuing):", e);
+    const resetQueuedBegin = () => {
+      beginClickCount = 0;
+      if (beginClickTimer) {
+        clearTimeout(beginClickTimer);
+        beginClickTimer = null;
+      }
+    };
+
+    const runBeginFlow = async ({ skipIntroViaClicks = false } = {}) => {
+      if (beginLaunchInProgress) return;
+      beginLaunchInProgress = true;
+      resetQueuedBegin();
+
+      const skipIntro = skipIntroOnNextBegin || skipIntroViaClicks;
+      skipIntroOnNextBegin = false;
+      startBtn.disabled = true;
+
+      // Hard-hide brand UI during begin -> intro to prevent any flicker
+      hideBrandUIHard();
+      if (startCard) startCard.classList.add("hidden");
+      if (!skipIntro && startOverlay) startOverlay.classList.add("videoMode");
+
+      const preloadPromise = preloadStartAssets().catch((e) => {
+        console.warn("Preload assets failed (continuing):", e);
+      });
+
+      let pm = null;
+      let pmTimer = null;
+
+      try {
+        if (!skipIntro) {
+          await playIntroVideoOnce().catch((e) => {
+            console.warn("Intro video failed (continuing):", e);
+          });
+        } else if (introVideoEl) {
+          introVideoEl.pause();
+          introVideoEl.classList.remove("show");
+          introVideoEl.removeAttribute("src");
+        }
+
+        // Only show the loading overlay if the first pano actually takes a moment to load.
+        // This prevents a 1-frame flash of the loading bar in the black frame right after the intro.
+        pmTimer = setTimeout(() => {
+          pm = beginProgressSession("Loading tour…");
+        }, 220);
+
+        const first = await ensurePanoLoaded(0, (p) => {
+          if (!pm) return;
+          const t = pm.__panoTask || (pm.__panoTask = pm.task("pano0", 4.0));
+          t.update(p);
         });
 
-        try {
-          if (!skipIntro) {
-            await playIntroVideoOnce().catch((e) => {
-              console.warn("Intro video failed (continuing):", e);
-            });
-          } else if (introVideoEl) {
-            introVideoEl.pause();
-            introVideoEl.classList.remove("show");
-            introVideoEl.removeAttribute("src");
-          }
+        if (pm && pm.__panoTask) pm.__panoTask.done();
+        setSphereMap(first);
 
-          // Only show the loading overlay if the first pano actually takes a moment to load.
-          // This prevents a 1-frame flash of the loading bar in the black frame right after the intro.
-          let pm = null;
-          const pmTimer = setTimeout(() => {
-            pm = beginProgressSession("Loading tour…");
-          }, 220);
+        clearTimeout(pmTimer);
+        pm?.finish?.();
 
-          const first = await ensurePanoLoaded(0, (p) => {
-            if (!pm) return;
-            const t = pm.__panoTask || (pm.__panoTask = pm.task("pano0", 4.0));
-            t.update(p);
-          });
+        yaw = HERO[0]?.yaw ?? 0;
+        pitch = HERO[0]?.pitch ?? 0;
+        targetYaw = yaw;
+        targetPitch = pitch;
+        applyYawPitch();
 
-          if (pm && pm.__panoTask) pm.__panoTask.done();
-          setSphereMap(first);
+        state.index = 0;
+        updateIndicator(0);
+        preloadNearby(0);
 
-          clearTimeout(pmTimer);
-          pm?.finish?.();
+        setUIEnabled(true);
+        // Fade pano UI in only after the first pano is actually visible.
+        revealPanoUIWhenReady();
 
-          yaw = HERO[0]?.yaw ?? 0;
-          pitch = HERO[0]?.pitch ?? 0;
-          targetYaw = yaw;
-          targetPitch = pitch;
-          applyYawPitch();
+        requestAnimationFrame(() => fadeInPano(450, skipIntro ? "black" : "white"));
+        if (startOverlay) startOverlay.classList.remove("videoMode");
+        hideStartOverlay();
 
-          state.index = 0;
-          updateIndicator(0);
-          preloadNearby(0);
-
-          setUIEnabled(true);
-// Fade pano UI in only after the first pano is actually visible
-revealPanoUIWhenReady();
-
-requestAnimationFrame(() => fadeInPano(450, skipIntro ? "black" : "white"));
-          if (startOverlay) startOverlay.classList.remove("videoMode");
-          hideStartOverlay();
-
-          // Reveal tour UI only AFTER intro video completes
-          if (tabPano) tabPano.style.display = "";
-          if (tabDollhouse) tabDollhouse.style.display = "";
-          // Now that the intro is finished, allow the brand UI to appear (no flicker)
+        // Reveal tour UI only AFTER intro video completes.
+        if (tabPano) tabPano.style.display = "";
+        if (tabDollhouse) tabDollhouse.style.display = "";
+        // Now that the intro is finished, allow the brand UI to appear (no flicker).
+        showBrandUIHard();
+        // Start the 10s logo -> text swap only after the brand UI is visible.
+        startBrandSwapTimer(10000);
+        // One more guard to ensure no 1-frame flash during the overlay removal.
+        __afterNextPaint(() => {
           showBrandUIHard();
-          // Start the 10s logo -> text swap only after the brand UI is visible
           startBrandSwapTimer(10000);
-          // One more guard to ensure no 1-frame flash during the overlay removal
-          __afterNextPaint(() => {
-            showBrandUIHard();
-            startBrandSwapTimer(10000);
-          });
+        });
 
-          preloadPromise.then(() => console.log("✅ background preload complete"));
-        } catch (e) {
-          console.error("Begin tour failed:", e);
-          clearTimeout(pmTimer);
-          pm?.cancel?.();
+        preloadPromise.then(() => console.log("✅ background preload complete"));
+      } catch (e) {
+        console.error("Begin tour failed:", e);
+        if (pmTimer) clearTimeout(pmTimer);
+        pm?.cancel?.();
 
-          if (startOverlay) startOverlay.classList.remove("videoMode");
-          if (startCard) startCard.classList.remove("hidden");
-          showStartOverlay();
+        if (startOverlay) startOverlay.classList.remove("videoMode");
+        if (startCard) startCard.classList.remove("hidden");
+        showStartOverlay();
 
-          startBtn.disabled = false;
-          if (introVideoEl) introVideoEl.classList.remove("show");
-        }
-      },
-      { once: true }
-    );
+        startBtn.disabled = false;
+        beginLaunchInProgress = false;
+        if (introVideoEl) introVideoEl.classList.remove("show");
+      }
+    };
+
+    startBtn.addEventListener("click", () => {
+      if (beginLaunchInProgress || startBtn.disabled) return;
+
+      beginClickCount += 1;
+
+      // Keep local-dev "S" skip immediate.
+      if (skipIntroOnNextBegin) {
+        runBeginFlow({ skipIntroViaClicks: false });
+        return;
+      }
+
+      if (beginClickCount >= BEGIN_SKIP_MULTI_CLICK_COUNT) {
+        runBeginFlow({ skipIntroViaClicks: true });
+        return;
+      }
+
+      if (beginClickTimer) return;
+
+      beginClickTimer = setTimeout(() => {
+        runBeginFlow({
+          skipIntroViaClicks: beginClickCount >= BEGIN_SKIP_MULTI_CLICK_COUNT,
+        });
+      }, BEGIN_SKIP_MULTI_CLICK_WINDOW_MS);
+    });
   }
 
-  resizeRenderer();
+  handleViewportResize();
   applyRenderLookForMode("pano");
 }
 

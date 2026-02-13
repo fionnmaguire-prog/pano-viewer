@@ -7,6 +7,7 @@
 
     <style>
       :root {
+        --player-base-width: 1700px;
         --frame-radius: 22px;
         --frame-border: rgba(255, 255, 255, 0.08);
         --frame-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
@@ -65,36 +66,44 @@
       html,
       body {
         margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
+        min-height: 100%;
+        background: var(--midnight-purple);
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
           sans-serif;
       }
 
-      body {
+      #playerShell {
+        width: 100%;
+        min-height: 100vh;
         display: grid;
         place-items: center;
         padding: 10px;
+        box-sizing: border-box;
         background: radial-gradient(
-            80% 80% at 50% 35%,
-            rgba(255, 255, 255, 0.06),
-            rgba(0, 0, 0, 0) 55%
+            85% 85% at 50% 30%,
+            rgba(255, 255, 255, 0.10),
+            rgba(46, 26, 71, 0) 58%
           ),
           radial-gradient(
-            120% 120% at 50% 100%,
-            rgba(255, 255, 255, 0.03),
-            rgba(0, 0, 0, 0) 60%
+            130% 130% at 50% 100%,
+            rgba(95, 68, 133, 0.20),
+            rgba(46, 26, 71, 0) 62%
           ),
-          #000;
+          var(--midnight-purple);
+      }
+
+      #playerStage {
+        position: relative;
+        width: var(--player-base-width);
+        height: calc(var(--player-base-width) * 9 / 16);
       }
 
       #app {
-        width: min(1700px, calc(100vw - 16px));
-        aspect-ratio: 16 / 9;
-        max-height: calc(100vh - 20px);
-
+        width: var(--player-base-width);
+        height: calc(var(--player-base-width) * 9 / 16);
         position: relative;
+        transform-origin: top left;
+        will-change: transform;
         overflow: hidden;
 
         border-radius: var(--frame-radius);
@@ -104,15 +113,8 @@
       }
 
       @media (max-width: 820px) {
-        body {
+        #playerShell {
           padding: 8px;
-        }
-
-        #app {
-          width: calc(100vw - 12px);
-          aspect-ratio: 10 / 16;
-          max-height: calc(100vh - 14px);
-          border-radius: 18px;
         }
       }
 
@@ -337,6 +339,11 @@
       #brandText {
         line-height: 1;
         white-space: nowrap;
+        transition: color 120ms ease;
+      }
+
+      #brandLink:hover #brandText {
+        color: var(--midnight-purple);
       }
 
       #brandText.hidden,
@@ -447,7 +454,7 @@
       #dollBtns {
         position: absolute;
         right: 14px;
-        bottom: calc(var(--ui-safe-bottom) + 78px);
+        bottom: var(--ui-safe-bottom);
         z-index: 12;
 
         display: inline-flex;
@@ -531,10 +538,10 @@
         z-index: 50;
         display: grid;
         place-items: center;
-        background: rgba(0,0,0,0.72);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        transition: opacity 300ms ease;
+        background: #ffffff;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        transition: opacity 300ms ease, background-color 120ms ease;
       }
 
       #startOverlay.hidden {
@@ -543,7 +550,7 @@
       }
 
       #startOverlay.videoMode {
-        background: transparent;
+        background: #ffffff;
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
       }
@@ -616,10 +623,10 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        background: #000;
+        background: #ffffff;
 
         opacity: 0;
-        transition: opacity 220ms ease;
+        transition: opacity 120ms ease-in-out;
 
         pointer-events: none;
         z-index: 1;
@@ -631,45 +638,49 @@
   </head>
 
   <body>
-    <div id="app">
-      <div id="tabs">
-        <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
-        <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
-      </div>
-
-      <a
-        id="brandLink"
-        href="https://rtfmediasolutions.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Open rtfmediasolutions.com"
-      >
-        <img id="brandLogo" alt="RTF Media Solutions" draggable="false" />
-        <span id="brandText" class="hidden">rtfmediasolutions.com</span>
-      </a>
-
-      <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
-        <button id="btnFull" class="uiBtn dollBtn active" type="button">FULL</button>
-        <button id="btnUp" class="uiBtn dollBtn hasStroke" type="button">UP</button>
-        <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
-      </div>
-
-      <div id="startOverlay" aria-label="Begin tour overlay">
-        <div id="startCard">
-          <button id="startBtn" type="button">BEGIN TOUR</button>
+    <div id="playerShell">
+      <div id="playerStage">
+        <div id="app">
+        <div id="tabs">
+          <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
+          <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
         </div>
-        <video id="introVideo" playsinline muted></video>
-      </div>
 
-      <video id="transitionVideo" playsinline muted preload="auto"></video>
+        <a
+          id="brandLink"
+          href="https://rtfmediasolutions.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open rtfmediasolutions.com"
+        >
+          <img id="brandLogo" alt="RTF Media Solutions" draggable="false" />
+          <span id="brandText" class="hidden">rtfmediasolutions.com</span>
+        </a>
 
-      <div id="indicator">01 / 21</div>
-
-      <div id="navWrap">
-        <div id="nav">
-          <button id="backBtn" class="uiBtn" aria-label="Back" type="button">BACK</button>
-          <button id="forwardBtn" class="uiBtn" aria-label="Next" type="button">NEXT</button>
+        <div id="dollBtns" class="hidden" aria-label="Dollhouse model selector">
+          <button id="btnFull" class="uiBtn dollBtn active" type="button">FULL</button>
+          <button id="btnUp" class="uiBtn dollBtn hasStroke" type="button">UP</button>
+          <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
         </div>
+
+        <div id="startOverlay" aria-label="Begin tour overlay">
+          <div id="startCard">
+            <button id="startBtn" type="button">BEGIN TOUR</button>
+          </div>
+          <video id="introVideo" playsinline muted></video>
+        </div>
+
+        <video id="transitionVideo" playsinline muted preload="auto"></video>
+
+        <div id="indicator">01 / 21</div>
+
+        <div id="navWrap">
+          <div id="nav">
+            <button id="backBtn" class="uiBtn" aria-label="Back" type="button">BACK</button>
+            <button id="forwardBtn" class="uiBtn" aria-label="Next" type="button">NEXT</button>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
 
