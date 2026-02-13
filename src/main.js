@@ -282,6 +282,8 @@ const startOverlay = document.getElementById("startOverlay");
 const startCard = document.getElementById("startCard");
 const startBtn = document.getElementById("startBtn");
 const introVideoEl = document.getElementById("introVideo");
+const IS_LOCAL_DEV = Boolean(import.meta.env.DEV);
+let skipIntroOnNextBegin = false;
 
 // Dollhouse buttons
 const dollBtns = document.getElementById("dollBtns");
@@ -306,9 +308,13 @@ Object.assign(roomLabelEl.style, {
   left: "16px",
   bottom: "16px",
   padding: "10px 12px",
-  borderRadius: "10px",
-  background: "rgba(0,0,0,0.55)",
-  backdropFilter: "blur(6px)",
+  borderRadius: "12px",
+  border: "var(--container-stroke-width) solid transparent",
+  background:
+    "linear-gradient(var(--midnight-purple), var(--midnight-purple)) padding-box, var(--chrome-stroke-material) border-box",
+  backgroundClip: "padding-box, border-box",
+  boxShadow:
+    "inset 0 1px 0 var(--chrome-specular-top), inset 0 -1px 0 rgba(89, 102, 124, 0.56), inset 1px 0 0 var(--chrome-specular-edge), 0 10px 18px rgba(10, 14, 24, 0.35)",
   color: "#fff",
   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
   fontSize: "13px",
@@ -381,12 +387,20 @@ function setTabActive(which) {
 // -----------------------------
 function getTourId() {
   const params = new URLSearchParams(location.search);
-  return params.get("tour") || "prod_demo_house_01";
+  return params.get("tour") || import.meta.env.VITE_TOUR_ID || "prod_demo_house_01";
 }
 
 function getApiBase() {
   const params = new URLSearchParams(location.search);
-  return (params.get("api") || "https://rtf-player-api.fionnmaguire.workers.dev").replace(/\/$/, "");
+  const envBase = import.meta.env.VITE_API_BASE;
+  const defaultBase = import.meta.env.DEV
+    ? location.origin
+    : "https://rtf-player-api.fionnmaguire.workers.dev";
+  return (
+    params.get("api") ||
+    envBase ||
+    defaultBase
+  ).replace(/\/$/, "");
 }
 
 function isAdminMode() {
@@ -596,8 +610,12 @@ async function loadTourConfig() {
 // Intro video
 // -----------------------------
 function getIntroVideoUrl() {
-  const mp4 = `${TOUR_BASE}intro/intro.mp4`;
-  return mp4;
+  // Prefer API-configured intro path from tour.json; fallback to legacy location.
+  const relPath =
+    typeof TOUR?.introVideo === "string" && TOUR.introVideo.trim().length
+      ? TOUR.introVideo.trim()
+      : "intro/intro.mp4";
+  return `${TOUR_BASE}${relPath.replace(/^\/+/, "")}`;
 }
 function showStartOverlay() {
   if (!startOverlay) return;
@@ -934,9 +952,16 @@ function blankPanoSphere() {
   sphereMat.opacity = 0;
   setSphereMap(null);
 }
-function fadeInPano(duration = 450) {
+function fadeInPano(duration = 450, fromColor = "black") {
   panoFadeToken++;
   const token = panoFadeToken;
+
+  // Allow a white source fade for specific moments (e.g. intro -> first pano).
+  if (fromColor === "white") {
+    panoScene.background = new THREE.Color(0xffffff);
+  } else {
+    panoScene.background = null;
+  }
 
   sphereMat.transparent = true;
   sphereMat.opacity = 0;
@@ -948,7 +973,11 @@ function fadeInPano(duration = 450) {
     const u = Math.min(1, Math.max(0, t));
     const e = u * u * (3 - 2 * u);
     sphereMat.opacity = e;
-    if (u < 1) requestAnimationFrame(tick);
+    if (u < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      panoScene.background = null;
+    }
   };
   requestAnimationFrame(tick);
 }
@@ -1072,6 +1101,7 @@ function setMode(which) {
 // Tab events
 if (tabPano) {
   tabPano.addEventListener("click", async () => {
+    if (mode === "pano" || tabPano.classList.contains("active")) return;
     if (state.isTransitioning) cancelActivePanoTransition("tabPano click during transition");
     setMode("pano");
     blankPanoSphere();
@@ -1578,7 +1608,62 @@ async function goTo(targetIndex) {
   }
 }
 
-if (forwardBtn) forwardBtn.addEventListener("click", () => goTo(state.index + 1));
+async function restartTourFromFirstNodeWithFade() {
+  if (mode !== "pano") return;
+  if (state.isTransitioning) return;
+  if (!Array.isArray(PANOS) || PANOS.length === 0) return;
+
+  const firstIndex = 0;
+  state.isTransitioning = true;
+  setUIEnabled(false);
+  autoReorienting = false;
+  isPointerDown = false;
+
+  try {
+    try {
+      transitionVideo.pause();
+      transitionVideo.currentTime = 0;
+    } catch {}
+
+    await fadeOverlayTo(1, 260);
+    fadeOverlay.style.opacity = "1";
+
+    blankPanoSphere();
+    const firstTex = await ensurePanoLoaded(firstIndex);
+    setSphereMap(firstTex);
+
+    state.index = firstIndex;
+    updateIndicator(firstIndex);
+    preloadNearby(firstIndex);
+
+    yaw = HERO[firstIndex]?.yaw ?? 0;
+    pitch = HERO[firstIndex]?.pitch ?? 0;
+    targetYaw = yaw;
+    targetPitch = pitch;
+    applyYawPitch();
+
+    requestAnimationFrame(() => fadeInPano(420));
+    await fadeOverlayTo(0, 320);
+    fadeOverlay.style.opacity = "0";
+  } catch (e) {
+    console.error("Failed to restart tour from first node:", e);
+    fadeOverlay.style.opacity = "0";
+  } finally {
+    state.isTransitioning = false;
+    if (mode === "pano") setUIEnabled(true);
+  }
+}
+
+if (forwardBtn) {
+  forwardBtn.addEventListener("click", async () => {
+    const nextIndex = state.index + 1;
+    if (nextIndex >= PANOS.length) {
+      await restartTourFromFirstNodeWithFade();
+      return;
+    }
+    goTo(nextIndex);
+  });
+}
 if (backBtn) backBtn.addEventListener("click", () => goTo(state.index - 1));
 
 // -----------------------------
@@ -1641,18 +1726,66 @@ const youAreHere = new THREE.Mesh(
     roughness: 0.35,
     metalness: 0.0,
     toneMapped: true,
+    transparent: true,
+    opacity: 1,
   })
 );
 youAreHere.rotation.x = Math.PI;
 youAreHere.visible = false;
 youAreHere.frustumCulled = false;
 dollScene.add(youAreHere);
+const youAreHereMat = youAreHere.material;
 
 const youAreHereBasePos = new THREE.Vector3();
 let youAreHereHasBase = false;
+let suppressYouAreHereUntilRelease = false;
+let youAreHereFadeToken = 0;
+
+function fadeInYouAreHere(durationMs = 380) {
+  if (!youAreHereHasBase || mode !== "dollhouse") return;
+
+  const token = ++youAreHereFadeToken;
+  const start = performance.now();
+  youAreHere.visible = true;
+  youAreHereMat.opacity = 0;
+
+  const tick = () => {
+    if (token !== youAreHereFadeToken) return;
+    if (mode !== "dollhouse" || !youAreHereHasBase) return;
+
+    const u = Math.min(1, Math.max(0, (performance.now() - start) / durationMs));
+    const e = smoothstep(u);
+    youAreHereMat.opacity = e;
+
+    if (u >= 1) return;
+    requestAnimationFrame(tick);
+  };
+
+  requestAnimationFrame(tick);
+}
+
+function setYouAreHereSuppressed(suppressed, { fadeIn = false } = {}) {
+  suppressYouAreHereUntilRelease = !!suppressed;
+  if (suppressYouAreHereUntilRelease) {
+    youAreHereFadeToken++;
+    youAreHere.visible = false;
+    youAreHereMat.opacity = 0;
+    return;
+  }
+
+  if (!youAreHereHasBase || mode !== "dollhouse") return;
+  if (fadeIn) fadeInYouAreHere();
+  else {
+    youAreHereFadeToken++;
+    youAreHereMat.opacity = 1;
+    youAreHere.visible = true;
+  }
+}
 
 function hideYouAreHere() {
+  youAreHereFadeToken++;
   youAreHere.visible = false;
+  youAreHereMat.opacity = 1;
   youAreHereHasBase = false;
 }
 function placeYouAreHereAboveNodeMesh(nodeMesh) {
@@ -1667,7 +1800,13 @@ function placeYouAreHereAboveNodeMesh(nodeMesh) {
   youAreHere.position.copy(p);
   youAreHereBasePos.copy(p);
   youAreHereHasBase = true;
-  youAreHere.visible = true;
+  if (suppressYouAreHereUntilRelease) {
+    youAreHere.visible = false;
+    youAreHereMat.opacity = 0;
+  } else {
+    youAreHereMat.opacity = 1;
+    youAreHere.visible = true;
+  }
 }
 function updateYouAreHere(dt, nowSec) {
   if (mode !== "dollhouse") return;
@@ -1752,11 +1891,14 @@ let refCenter = null;
 let refDistance = null;
 let refReady = false;
 let framedOnce = false;
+let hasPlayedInitialDollhouseWipe = false;
 
 let defaultDollView = null;
 let needsDollReset = false;
 
 const DOLL_DEFAULT_VIEW_STORAGE_KEY = "doll_default_view_v1";
+const DOLL_WIPE_FIRST_REVEAL_MS = 3600;
+const DOLL_WIPE_SWITCH_MS = 1440;
 
 function serializeOrbitView(v) {
   return {
@@ -2011,7 +2153,10 @@ async function ensureBestModelHasNode(panoIndex) {
 }
 
 // When entering dollhouse from pano: start near current pano's node, match pano yaw, then zoom out + rotate back to default.
-async function resetDollhouseFromCurrentPano(animated = true, { onPrepared = null } = {}) {
+async function resetDollhouseFromCurrentPano(
+  animated = true,
+  { onPrepared = null, onSpinStart = null } = {}
+) {
   if (!defaultDollView) return;
   if (!refCenter) return;
 
@@ -2076,6 +2221,12 @@ async function resetDollhouseFromCurrentPano(animated = true, { onPrepared = nul
 
     let rotateYawDeltaToEnd = shortestAngleDelta(startTheta, endTheta);
     if (shouldFullSpin) rotateYawDeltaToEnd += FULL_SPIN_RAD * FULL_SPIN_SIGN;
+
+    if (typeof onSpinStart === "function") {
+      try {
+        onSpinStart({ durationMs, shouldFullSpin });
+      } catch {}
+    }
 
     await animateToOrbitView(defaultDollView, durationMs, {
       rotateYawDelta: rotateYawDeltaToEnd,
@@ -2200,6 +2351,271 @@ function applyReferenceClippingAndLimits() {
 
   orbit.minDistance = refDistance * 0.35;
   orbit.maxDistance = refDistance * 4.0;
+}
+
+function collectUniqueMaterialsFromRoot(root) {
+  const seen = new Set();
+  const out = [];
+
+  if (!root) return out;
+
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      out.push(m);
+    }
+  });
+
+  return out;
+}
+
+async function playDollhouseBottomUpWipe(root, durationMs = DOLL_WIPE_SWITCH_MS) {
+  if (!root || durationMs <= 0) return;
+
+  const bounds = new THREE.Box3().setFromObject(root);
+  if (!Number.isFinite(bounds.min.y) || !Number.isFinite(bounds.max.y)) return;
+
+  const spanY = Math.max(0.001, bounds.max.y - bounds.min.y);
+  const cutStart = bounds.min.y - spanY * 0.02;
+  const cutEnd = bounds.max.y + spanY * 0.02;
+  const wipePlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), cutStart);
+
+  const mats = collectUniqueMaterialsFromRoot(root);
+  if (!mats.length) return;
+
+  const prevState = mats.map((m) => ({
+    mat: m,
+    clippingPlanes: Array.isArray(m.clippingPlanes) ? [...m.clippingPlanes] : null,
+    clipIntersection: m.clipIntersection,
+    clipShadows: m.clipShadows,
+  }));
+
+  renderer.localClippingEnabled = true;
+  for (const m of mats) {
+    m.clippingPlanes = [wipePlane];
+    m.clipIntersection = false;
+    m.clipShadows = false;
+    m.needsUpdate = true;
+  }
+
+  try {
+    const startT = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        if (mode !== "dollhouse") {
+          resolve();
+          return;
+        }
+
+        const t = Math.min(1, (performance.now() - startT) / durationMs);
+        const e = easeInOutCubic(t);
+        wipePlane.constant = THREE.MathUtils.lerp(cutStart, cutEnd, e);
+
+        if (t >= 1) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  } finally {
+    for (const p of prevState) {
+      p.mat.clippingPlanes = p.clippingPlanes;
+      p.mat.clipIntersection = p.clipIntersection;
+      p.mat.clipShadows = p.clipShadows;
+      p.mat.needsUpdate = true;
+    }
+    renderer.localClippingEnabled = false;
+  }
+}
+
+async function playDollhouseSwapWipeUp(inRoot, outRoot, durationMs = DOLL_WIPE_SWITCH_MS) {
+  if (!inRoot || durationMs <= 0) return;
+
+  const inBounds = new THREE.Box3().setFromObject(inRoot);
+  if (!Number.isFinite(inBounds.min.y) || !Number.isFinite(inBounds.max.y)) return;
+
+  const inSpanY = Math.max(0.001, inBounds.max.y - inBounds.min.y);
+  const inStart = inBounds.min.y - inSpanY * 0.02;
+  const inEnd = inBounds.max.y + inSpanY * 0.02;
+  const revealPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), inStart);
+
+  let hidePlane = null;
+  let outStart = 0;
+  let outEnd = 0;
+  if (outRoot) {
+    const outBounds = new THREE.Box3().setFromObject(outRoot);
+    if (Number.isFinite(outBounds.min.y) && Number.isFinite(outBounds.max.y)) {
+      const outSpanY = Math.max(0.001, outBounds.max.y - outBounds.min.y);
+      outStart = outBounds.min.y - outSpanY * 0.02;
+      outEnd = outBounds.max.y + outSpanY * 0.02;
+      // Hide from bottom -> top (opposite of reveal intent): y<threshold gets clipped.
+      hidePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -outStart);
+    }
+  }
+
+  const inMats = collectUniqueMaterialsFromRoot(inRoot);
+  const outMats = outRoot ? collectUniqueMaterialsFromRoot(outRoot) : [];
+  const mats = [...inMats, ...outMats];
+  if (!mats.length) return;
+
+  const prevState = mats.map((m) => ({
+    mat: m,
+    clippingPlanes: Array.isArray(m.clippingPlanes) ? [...m.clippingPlanes] : null,
+    clipIntersection: m.clipIntersection,
+    clipShadows: m.clipShadows,
+  }));
+
+  renderer.localClippingEnabled = true;
+
+  for (const m of inMats) {
+    m.clippingPlanes = [revealPlane];
+    m.clipIntersection = false;
+    m.clipShadows = false;
+    m.needsUpdate = true;
+  }
+
+  if (hidePlane) {
+    for (const m of outMats) {
+      m.clippingPlanes = [hidePlane];
+      m.clipIntersection = false;
+      m.clipShadows = false;
+      m.needsUpdate = true;
+    }
+  }
+
+  try {
+    const startT = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        if (mode !== "dollhouse") {
+          resolve();
+          return;
+        }
+
+        const t = Math.min(1, (performance.now() - startT) / durationMs);
+        const e = easeInOutCubic(t);
+        revealPlane.constant = THREE.MathUtils.lerp(inStart, inEnd, e);
+        if (hidePlane) {
+          const hideThreshold = THREE.MathUtils.lerp(outStart, outEnd, e);
+          hidePlane.constant = -hideThreshold;
+        }
+
+        if (t >= 1) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  } finally {
+    for (const p of prevState) {
+      p.mat.clippingPlanes = p.clippingPlanes;
+      p.mat.clipIntersection = p.clipIntersection;
+      p.mat.clipShadows = p.clipShadows;
+      p.mat.needsUpdate = true;
+    }
+    renderer.localClippingEnabled = false;
+  }
+}
+
+async function playDollhouseSwapWipeDown(inRoot, outRoot, durationMs = DOLL_WIPE_SWITCH_MS) {
+  if (!inRoot || durationMs <= 0) return;
+
+  const inBounds = new THREE.Box3().setFromObject(inRoot);
+  if (!Number.isFinite(inBounds.min.y) || !Number.isFinite(inBounds.max.y)) return;
+
+  const inSpanY = Math.max(0.001, inBounds.max.y - inBounds.min.y);
+  const inTop = inBounds.max.y + inSpanY * 0.02;
+  const inBottom = inBounds.min.y - inSpanY * 0.02;
+  // Reveal from top -> bottom: start showing only the top, then move downward.
+  const revealPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -inTop);
+
+  let hidePlane = null;
+  let outTop = 0;
+  let outBottom = 0;
+  if (outRoot) {
+    const outBounds = new THREE.Box3().setFromObject(outRoot);
+    if (Number.isFinite(outBounds.min.y) && Number.isFinite(outBounds.max.y)) {
+      const outSpanY = Math.max(0.001, outBounds.max.y - outBounds.min.y);
+      outTop = outBounds.max.y + outSpanY * 0.02;
+      outBottom = outBounds.min.y - outSpanY * 0.02;
+      // Hide from top -> bottom: clip y > threshold while threshold moves down.
+      hidePlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), outTop);
+    }
+  }
+
+  const inMats = collectUniqueMaterialsFromRoot(inRoot);
+  const outMats = outRoot ? collectUniqueMaterialsFromRoot(outRoot) : [];
+  const mats = [...inMats, ...outMats];
+  if (!mats.length) return;
+
+  const prevState = mats.map((m) => ({
+    mat: m,
+    clippingPlanes: Array.isArray(m.clippingPlanes) ? [...m.clippingPlanes] : null,
+    clipIntersection: m.clipIntersection,
+    clipShadows: m.clipShadows,
+  }));
+
+  renderer.localClippingEnabled = true;
+
+  for (const m of inMats) {
+    m.clippingPlanes = [revealPlane];
+    m.clipIntersection = false;
+    m.clipShadows = false;
+    m.needsUpdate = true;
+  }
+
+  if (hidePlane) {
+    for (const m of outMats) {
+      m.clippingPlanes = [hidePlane];
+      m.clipIntersection = false;
+      m.clipShadows = false;
+      m.needsUpdate = true;
+    }
+  }
+
+  try {
+    const startT = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        if (mode !== "dollhouse") {
+          resolve();
+          return;
+        }
+
+        const t = Math.min(1, (performance.now() - startT) / durationMs);
+        const e = easeInOutCubic(t);
+        const revealThreshold = THREE.MathUtils.lerp(inTop, inBottom, e);
+        revealPlane.constant = -revealThreshold;
+
+        if (hidePlane) {
+          const hideThreshold = THREE.MathUtils.lerp(outTop, outBottom, e);
+          hidePlane.constant = hideThreshold;
+        }
+
+        if (t >= 1) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  } finally {
+    for (const p of prevState) {
+      p.mat.clippingPlanes = p.clippingPlanes;
+      p.mat.clipIntersection = p.clipIntersection;
+      p.mat.clipShadows = p.clipShadows;
+      p.mat.needsUpdate = true;
+    }
+    renderer.localClippingEnabled = false;
+  }
 }
 
 function alignModelToReference(key) {
@@ -2532,6 +2948,8 @@ async function switchDollhouseModel(key) {
   if (activeDollKey === key && activeDollRoot) return;
 
   switching = true;
+  const prevKey = activeDollKey;
+  const prevRoot = activeDollRoot;
   setDollButtonsActive(key);
 
   const view = saveOrbitView();
@@ -2543,10 +2961,41 @@ async function switchDollhouseModel(key) {
     alignModelToReference(key);
 
     activeDollKey = key;
-    setActiveDollRoot(root);
+    const useBidirectionalWipeUp =
+      mode === "dollhouse" &&
+      ((prevKey === "down" && (key === "up" || key === "full")) ||
+        (prevKey === "full" && key === "up")) &&
+      !!prevRoot &&
+      prevRoot !== root;
+    const useBidirectionalWipeDown =
+      mode === "dollhouse" &&
+      ((prevKey === "up" && (key === "down" || key === "full")) ||
+        (prevKey === "full" && key === "down")) &&
+      !!prevRoot &&
+      prevRoot !== root;
 
-    applyOrbitViewWithLockedPivot(view);
-    applyReferenceClippingAndLimits();
+    if (useBidirectionalWipeUp || useBidirectionalWipeDown) {
+      if (root.parent !== dollScene) dollScene.add(root);
+
+      applyOrbitViewWithLockedPivot(view);
+      applyReferenceClippingAndLimits();
+      if (useBidirectionalWipeUp) {
+        await playDollhouseSwapWipeUp(root, prevRoot, DOLL_WIPE_SWITCH_MS);
+      } else {
+        await playDollhouseSwapWipeDown(root, prevRoot, DOLL_WIPE_SWITCH_MS);
+      }
+
+      dollScene.remove(prevRoot);
+      setActiveDollRoot(root);
+    } else {
+      setActiveDollRoot(root);
+
+      applyOrbitViewWithLockedPivot(view);
+      applyReferenceClippingAndLimits();
+      if (mode === "dollhouse") {
+        await playDollhouseBottomUpWipe(root, DOLL_WIPE_SWITCH_MS);
+      }
+    }
   } catch (e) {
     console.error(`Failed to load dollhouse model "${key}"`, e);
     setDollButtonsActive(activeDollKey);
@@ -2555,9 +3004,24 @@ async function switchDollhouseModel(key) {
   }
 }
 
-if (btnFull) btnFull.addEventListener("click", () => switchDollhouseModel("full"));
-if (btnUp) btnUp.addEventListener("click", () => switchDollhouseModel("up"));
-if (btnDown) btnDown.addEventListener("click", () => switchDollhouseModel("down"));
+if (btnFull) {
+  btnFull.addEventListener("click", () => {
+    if (btnFull.classList.contains("active")) return;
+    switchDollhouseModel("full");
+  });
+}
+if (btnUp) {
+  btnUp.addEventListener("click", () => {
+    if (btnUp.classList.contains("active")) return;
+    switchDollhouseModel("up");
+  });
+}
+if (btnDown) {
+  btnDown.addEventListener("click", () => {
+    if (btnDown.classList.contains("active")) return;
+    switchDollhouseModel("down");
+  });
+}
 
 // -----------------------------
 // Dollhouse enter flow (safe) — with double-fade prevention
@@ -2567,6 +3031,7 @@ let hasShownInitialDollhouseLoader = false;
 
 if (tabDollhouse) {
   tabDollhouse.addEventListener("click", async () => {
+    if (mode === "dollhouse" || tabDollhouse.classList.contains("active")) return;
     dollhouseEnterToken++;
     const token = dollhouseEnterToken;
     const stillValid = () => token === dollhouseEnterToken;
@@ -2606,6 +3071,7 @@ if (tabDollhouse) {
 
       // 4) Loader (only first entry)
       const shouldShowLoader = !hasShownInitialDollhouseLoader;
+      const isFirstEntryIntoDollhouse = shouldShowLoader;
       let tRef = null;
       let tModel = null;
 
@@ -2650,6 +3116,7 @@ if (tabDollhouse) {
       }
 
       alignModelToReference(activeDollKey);
+      if (isFirstEntryIntoDollhouse) setYouAreHereSuppressed(true);
       setActiveDollRoot(root);
 
       // 9) Ensure we have a default view (first entry)
@@ -2688,7 +3155,6 @@ if (tabDollhouse) {
       // If we're coming from pano (including the very first time ever entering dollhouse),
       // we want the reset animation (node-zoom + yaw match -> zoom out to default).
       // On FIRST entry, keep a short safety black screen so no wrong-rotation frame ever flashes.
-      const isFirstEntryIntoDollhouse = shouldShowLoader;
 
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -2718,9 +3184,26 @@ if (tabDollhouse) {
           // before revealing to avoid any wrong-frame flash.
           let preparedResolve;
           const prepared = new Promise((r) => (preparedResolve = r));
+          let firstRevealWipePromise = null;
 
           const resetPromise = resetDollhouseFromCurrentPano(true, {
             onPrepared: () => preparedResolve && preparedResolve(),
+            onSpinStart: () => {
+              if (firstRevealWipePromise) return;
+              if (hasPlayedInitialDollhouseWipe) return;
+              if (!activeDollRoot || mode !== "dollhouse") return;
+
+              firstRevealWipePromise = playDollhouseBottomUpWipe(
+                activeDollRoot,
+                DOLL_WIPE_FIRST_REVEAL_MS
+              )
+                .then(() => {
+                  if (mode === "dollhouse") hasPlayedInitialDollhouseWipe = true;
+                })
+                .catch((e) => {
+                  console.warn("First dollhouse wipe failed:", e);
+                });
+            },
           });
 
           // ✅ Keep overlay black until we are in the correct START pose
@@ -2735,6 +3218,10 @@ if (tabDollhouse) {
           fadeOverlay.style.opacity = "0";
 
           await resetPromise;
+          if (suppressYouAreHereUntilRelease) {
+            setYouAreHereSuppressed(false, { fadeIn: true });
+          }
+          if (firstRevealWipePromise) await firstRevealWipePromise;
           applyReferenceClippingAndLimits();
         } else {
           // Returning from pano (normal): start reset while black,
@@ -2776,6 +3263,11 @@ if (tabDollhouse) {
         // extra hard guarantee
         fadeOverlay.style.opacity = "0";
       }
+
+      if (isFirstEntryIntoDollhouse && suppressYouAreHereUntilRelease) {
+        setYouAreHereSuppressed(false, { fadeIn: true });
+      }
+
 // Reveal dollhouse UI only after the model is visible
 revealDollUIWhenReady();
 
@@ -2787,6 +3279,7 @@ revealDollUIWhenReady();
     } catch (e) {
       console.error("Failed to load dollhouse:", e);
       if (pm) pm.cancel();
+      setYouAreHereSuppressed(false);
 
       // Never leave user black
       try {
@@ -2834,6 +3327,17 @@ async function preloadStartAssets() {
 // -----------------------------
 window.addEventListener("keydown", (e) => {
   const key = e.key.toLowerCase();
+
+  if (IS_LOCAL_DEV && key === "s") {
+    const overlayVisible = !!startOverlay && !startOverlay.classList.contains("hidden");
+    if (overlayVisible && startBtn && !startBtn.disabled) {
+      e.preventDefault();
+      skipIntroOnNextBegin = true;
+      startBtn.click();
+      return;
+    }
+  }
+
   if (key === "h" && mode === "pano") {
     console.log(
       `HERO[${state.index}] = { yaw: ${yaw.toFixed(6)}, pitch: ${pitch.toFixed(6)} };`
@@ -2929,21 +3433,29 @@ async function init() {
     startBtn.addEventListener(
       "click",
       async () => {
+        const skipIntro = skipIntroOnNextBegin;
+        skipIntroOnNextBegin = false;
         startBtn.disabled = true;
 
         // Hard-hide brand UI during begin -> intro to prevent any flicker
         hideBrandUIHard();
         if (startCard) startCard.classList.add("hidden");
-        if (startOverlay) startOverlay.classList.add("videoMode");
+        if (!skipIntro && startOverlay) startOverlay.classList.add("videoMode");
 
         const preloadPromise = preloadStartAssets().catch((e) => {
           console.warn("Preload assets failed (continuing):", e);
         });
 
         try {
-          await playIntroVideoOnce().catch((e) => {
-            console.warn("Intro video failed (continuing):", e);
-          });
+          if (!skipIntro) {
+            await playIntroVideoOnce().catch((e) => {
+              console.warn("Intro video failed (continuing):", e);
+            });
+          } else if (introVideoEl) {
+            introVideoEl.pause();
+            introVideoEl.classList.remove("show");
+            introVideoEl.removeAttribute("src");
+          }
 
           // Only show the loading overlay if the first pano actually takes a moment to load.
           // This prevents a 1-frame flash of the loading bar in the black frame right after the intro.
@@ -2978,7 +3490,7 @@ async function init() {
 // Fade pano UI in only after the first pano is actually visible
 revealPanoUIWhenReady();
 
-requestAnimationFrame(() => fadeInPano(450));
+requestAnimationFrame(() => fadeInPano(450, skipIntro ? "black" : "white"));
           if (startOverlay) startOverlay.classList.remove("videoMode");
           hideStartOverlay();
 
