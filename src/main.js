@@ -193,6 +193,7 @@ const tabDollhouse = document.getElementById("tabDollhouse");
 // UI fade-in (mode UI buttons)
 // -----------------------------
 const UI_FADE_DELAY_MS = 140; // small delay after content is visible
+const UI_FADE_DELAY_DOLL_MS = 100; // slightly faster reveal for FULL/UP/DOWN
 const UI_FADE_MS = 180;       // fade duration
 
 const __uiTimers = new WeakMap();
@@ -278,7 +279,7 @@ function revealDollUIWhenReady() {
     if (epochAtCall !== __uiEpoch) return;
     if (mode !== "dollhouse") return;
 
-    uiShowGroupAfter([dollBtns].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+    uiShowGroupAfter([dollBtns].filter(Boolean), { delayMs: UI_FADE_DELAY_DOLL_MS, fadeMs: UI_FADE_MS });
   });
 }
 
