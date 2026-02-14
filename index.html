@@ -8,6 +8,7 @@
     <style>
       :root {
         --player-base-width: 1700px;
+        --player-base-height-multiplier: 0.58;
         --frame-radius: 22px;
         --frame-border: rgba(255, 255, 255, 0.08);
         --frame-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
@@ -95,12 +96,12 @@
       #playerStage {
         position: relative;
         width: var(--player-base-width);
-        height: calc(var(--player-base-width) * 9 / 16);
+        height: calc(var(--player-base-width) * var(--player-base-height-multiplier));
       }
 
       #app {
         width: var(--player-base-width);
-        height: calc(var(--player-base-width) * 9 / 16);
+        height: calc(var(--player-base-width) * var(--player-base-height-multiplier));
         position: relative;
         transform-origin: top left;
         will-change: transform;
