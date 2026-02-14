@@ -331,10 +331,10 @@ const roomLabelEl = document.createElement("div");
 roomLabelEl.id = "roomLabel";
 Object.assign(roomLabelEl.style, {
   position: "absolute",
-  left: "32px",
-  bottom: "32px",
-  padding: "24px 32px",
-  borderRadius: "24px",
+  left: "16px",
+  bottom: "16px",
+  padding: "12px 16px",
+  borderRadius: "12px",
   border: "var(--container-stroke-width) solid transparent",
   background:
     "linear-gradient(var(--midnight-purple), var(--midnight-purple)) padding-box, var(--chrome-stroke-material) border-box",
@@ -343,9 +343,9 @@ Object.assign(roomLabelEl.style, {
     "inset 0 1px 0 var(--chrome-specular-top), inset 0 -1px 0 rgba(89, 102, 124, 0.56), inset 1px 0 0 var(--chrome-specular-edge), 0 10px 18px rgba(10, 14, 24, 0.35)",
   color: "#fff",
   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-  fontSize: "30px",
+  fontSize: "15px",
   fontWeight: "700",
-  letterSpacing: "0.8px",
+  letterSpacing: "0.4px",
   textTransform: "uppercase",
   zIndex: "20",
   pointerEvents: "none",
