@@ -331,10 +331,10 @@ const roomLabelEl = document.createElement("div");
 roomLabelEl.id = "roomLabel";
 Object.assign(roomLabelEl.style, {
   position: "absolute",
-  left: "16px",
-  bottom: "16px",
-  padding: "12px 16px",
-  borderRadius: "12px",
+  left: "32px",
+  bottom: "32px",
+  padding: "24px 32px",
+  borderRadius: "24px",
   border: "var(--container-stroke-width) solid transparent",
   background:
     "linear-gradient(var(--midnight-purple), var(--midnight-purple)) padding-box, var(--chrome-stroke-material) border-box",
@@ -343,9 +343,9 @@ Object.assign(roomLabelEl.style, {
     "inset 0 1px 0 var(--chrome-specular-top), inset 0 -1px 0 rgba(89, 102, 124, 0.56), inset 1px 0 0 var(--chrome-specular-edge), 0 10px 18px rgba(10, 14, 24, 0.35)",
   color: "#fff",
   fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-  fontSize: "15px",
+  fontSize: "30px",
   fontWeight: "700",
-  letterSpacing: "0.4px",
+  letterSpacing: "0.8px",
   textTransform: "uppercase",
   zIndex: "20",
   pointerEvents: "none",
@@ -1168,6 +1168,17 @@ function getRoomLabelForIndex(i) {
   return typeof label === "string" && label.trim().length ? label.trim() : "";
 }
 
+const DOLLHOUSE_ROOM_LABEL_HOVER_DELAY_MS = 500;
+let roomLabelHoverDelayTimer = null;
+let pendingRoomLabelText = "";
+
+function clearRoomLabelHoverDelay() {
+  if (!roomLabelHoverDelayTimer) return;
+  clearTimeout(roomLabelHoverDelayTimer);
+  roomLabelHoverDelayTimer = null;
+  pendingRoomLabelText = "";
+}
+
 function showRoomLabelText(text) {
   const t = (text ?? "").toString().trim();
 
@@ -1181,6 +1192,24 @@ function showRoomLabelText(text) {
 function hideRoomLabelText() {
   if (!roomLabelEl) return;
   roomLabelEl.style.opacity = "0";
+}
+
+function scheduleDollhouseRoomLabelText(text) {
+  const t = (text ?? "").toString().trim();
+  clearRoomLabelHoverDelay();
+
+  if (!t) {
+    hideRoomLabelText();
+    return;
+  }
+
+  pendingRoomLabelText = t;
+  roomLabelHoverDelayTimer = setTimeout(() => {
+    roomLabelHoverDelayTimer = null;
+    if (mode !== "dollhouse") return;
+    if (!hoveredNode) return;
+    showRoomLabelText(pendingRoomLabelText);
+  }, DOLLHOUSE_ROOM_LABEL_HOVER_DELAY_MS);
 }
 
 function setRoomLabel(i) {
@@ -1250,6 +1279,7 @@ function setMode(which) {
 
   if (which !== "pano") {
     // Hide room label unless you are hovering nodes (handled by hover logic)
+    clearRoomLabelHoverDelay();
     hideRoomLabelText();
   } else {
     // restore current label immediately
@@ -2898,6 +2928,8 @@ function setActiveDollRoot(root) {
     if (s) s.target = 0;
     hoveredNode = null;
   }
+  clearRoomLabelHoverDelay();
+  hideRoomLabelText();
 
   renderer.domElement.style.cursor = orbit.enabled ? "grab" : "default";
 }
@@ -3055,9 +3087,10 @@ renderer.domElement.addEventListener("pointermove", (e) => {
       renderer.domElement.style.cursor = "pointer";
 
       const idx = hoveredNode.userData?.panoIndex;
-      if (idx != null) showRoomLabelText(getRoomLabelForIndex(idx));
+      if (idx != null) scheduleDollhouseRoomLabelText(getRoomLabelForIndex(idx));
     } else {
       renderer.domElement.style.cursor = orbit.enabled ? "grab" : "default";
+      clearRoomLabelHoverDelay();
       hideRoomLabelText();
     }
   }
@@ -3083,6 +3116,7 @@ renderer.domElement.addEventListener(
       if (s) s.target = 0;
       hoveredNode = null;
     }
+    clearRoomLabelHoverDelay();
     renderer.domElement.style.cursor = "default";
     hideRoomLabelText();
 
