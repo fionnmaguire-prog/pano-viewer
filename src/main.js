@@ -20,7 +20,7 @@ const indicator = document.getElementById("indicator");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const PLAYER_BASE_WIDTH = 1700;
-const PLAYER_BASE_HEIGHT_MULTIPLIER = 0.58;
+const PLAYER_BASE_HEIGHT_MULTIPLIER = 0.59;
 const PLAYER_BASE_HEIGHT = PLAYER_BASE_WIDTH * PLAYER_BASE_HEIGHT_MULTIPLIER;
 
 // Brand link UI

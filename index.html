@@ -8,7 +8,7 @@
     <style>
       :root {
         --player-base-width: 1700px;
-        --player-base-height-multiplier: 0.58;
+        --player-base-height-multiplier: 0.59;
         --frame-radius: 22px;
         --frame-border: rgba(255, 255, 255, 0.08);
         --frame-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
@@ -560,10 +560,25 @@
         position: relative;
         z-index: 2;
         text-align: center;
+        animation: startCardFloat 2.2s ease-in-out infinite;
       }
 
       #startCard.hidden {
         display: none;
+      }
+
+      #startCard:hover {
+        animation-play-state: paused;
+      }
+
+      @keyframes startCardFloat {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-6px);
+        }
       }
 
       #startBtn {
