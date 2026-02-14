@@ -302,6 +302,11 @@
           0 12px 24px rgba(8, 4, 14, 0.52);
       }
 
+      /* Isolated seam fix: only for DOLLHOUSE tab while unselected (interior mode) */
+      #tabDollhouse:not(.active) {
+        border-color: var(--tab-inactive-bg);
+      }
+
       /* ✅ REMOVE active hover/active animation (selected tab stays still) */
       /* (intentionally no .tabBtn.active:hover or :active rules) */
 
