@@ -188,8 +188,9 @@ function getNodeIdForIndex(i) {
 }
 // Tabs
 const tabPano = document.getElementById("tabPano");
-const tabPano360 = document.getElementById("tabPano360");
 const tabDollhouse = document.getElementById("tabDollhouse");
+const pano360Control = document.getElementById("pano360Control");
+const pano360Switch = document.getElementById("pano360Switch");
 // -----------------------------
 // UI fade-in (mode UI buttons)
 // -----------------------------
@@ -399,14 +400,13 @@ function startBrandSwapTimer(delayMs = 10000) {
 // Tabs helper
 // -----------------------------
 function syncTabStrokes() {
-  [tabPano, tabPano360, tabDollhouse].forEach((btn) => {
+  [tabPano, tabDollhouse].forEach((btn) => {
     if (!btn) return;
     btn.classList.toggle("hasStroke", !btn.classList.contains("active"));
   });
 }
 function setTabActive(which) {
-  if (tabPano) tabPano.classList.toggle("active", which === "pano");
-  if (tabPano360) tabPano360.classList.toggle("active", which === "pano360");
+  if (tabPano) tabPano.classList.toggle("active", which === "pano" || which === "pano360");
   if (tabDollhouse) tabDollhouse.classList.toggle("active", which === "dollhouse");
   syncTabStrokes();
 }
@@ -550,7 +550,13 @@ window.addEventListener("message", async (event) => {
     if (data.type === "RTF_SET_MODE") {
       const m = (data.mode || "").toString();
       if (m === "pano") {
+        setPano360SwitchState(false);
         if (state.isTransitioning) cancelActivePanoTransition("RTF_SET_MODE:pano");
+        if (mode === "pano360") {
+          await fallbackFromPano360ToInterior();
+          if (debug) console.log("[RTF message] SET_MODE", { from: event.origin, data });
+          return;
+        }
         setMode("pano");
         blankPanoSphere();
         const tex = await ensurePanoLoaded(state.index);
@@ -559,13 +565,8 @@ window.addEventListener("message", async (event) => {
         revealPanoUIWhenReady();
       } else if (m === "pano360") {
         if (!PHOTO360.length) return;
-        if (state.isTransitioning) cancelActivePanoTransition("RTF_SET_MODE:pano360");
-        setMode("pano360");
-        blankPanoSphere();
-        const tex = await ensurePano360Loaded(state.index);
-        setSphereMap(tex);
-        requestAnimationFrame(() => fadeInPano(220));
-        revealPanoUIWhenReady();
+        setPano360SwitchState(true);
+        await enterPano360Mode();
       } else if (m === "dollhouse") {
         // Prefer the existing click handler flow for entering dollhouse
         tabDollhouse?.click?.();
@@ -1063,6 +1064,10 @@ let PANOS = [];
 let HERO = [];
 let ROOMS = [];
 let PHOTO360 = [];
+let PHOTO360_HERO = [];
+let pano360SwitchEnabled = false;
+const PHOTO360_SAVE_HOTKEY = "o";
+const PHOTO360_SAVE_HOTKEY_ALT = "0";
 
 let DOLLHOUSE_GLB_FULL = "";
 let DOLLHOUSE_GLB_UP = "";
@@ -1243,6 +1248,9 @@ function setRoomLabel(i) {
 function isPanoLikeMode(which = mode) {
   return which === "pano" || which === "pano360";
 }
+function isPano360Enabled() {
+  return pano360SwitchEnabled && PHOTO360.length > 0;
+}
 
 function getNodeCountForMode(which = mode) {
   if (which === "pano360" && PHOTO360.length > 0) return PHOTO360.length;
@@ -1339,10 +1347,66 @@ function setMode(which) {
   resizeRenderer();
 }
 
+async function fallbackFromPano360ToInterior() {
+  if (mode !== "pano360") return;
+  const carryDelta = getModeLookDelta("pano360", state.index);
+  setMode("pano");
+  blankPanoSphere();
+  const tex = await ensurePanoLoaded(state.index);
+  setSphereMap(tex);
+  applyModeLookWithDelta("pano", state.index, carryDelta);
+  requestAnimationFrame(() => fadeInPano(220));
+  revealPanoUIWhenReady();
+}
+
+function setPano360SwitchState(enabled) {
+  pano360SwitchEnabled = !!enabled;
+  if (!pano360Switch) return;
+  pano360Switch.classList.toggle("isOn", pano360SwitchEnabled);
+  pano360Switch.setAttribute("aria-checked", pano360SwitchEnabled ? "true" : "false");
+}
+
+async function enterPano360Mode() {
+  if (!isPano360Enabled()) return;
+  if (mode === "pano360") return;
+  const fromMode = mode;
+  const fromIndex = state.index;
+  const carryDelta = fromMode === "pano" ? getModeLookDelta("pano", fromIndex) : null;
+  if (state.isTransitioning) cancelActivePanoTransition("enterPano360Mode");
+
+  setMode("pano360");
+  blankPanoSphere();
+  const tex = await ensurePano360Loaded(state.index);
+  if (!tex) throw new Error(`Missing 360 image for node index ${state.index}`);
+  setSphereMap(tex);
+  applyModeLookWithDelta("pano360", state.index, carryDelta);
+  requestAnimationFrame(() => fadeInPano(220));
+  preloadNearby360(state.index);
+  revealPanoUIWhenReady();
+}
+
+function refreshPano360ControlVisibility() {
+  const available = PHOTO360.length > 0;
+
+  if (pano360Control) {
+    pano360Control.classList.toggle("hidden", !available);
+  }
+  if (pano360Switch) {
+    pano360Switch.disabled = !available;
+  }
+  if (!available) setPano360SwitchState(false);
+}
+
 // Tab events
 if (tabPano) {
   tabPano.addEventListener("click", async () => {
-    if (mode === "pano" || tabPano.classList.contains("active")) return;
+    if (mode === "pano") return;
+    setPano360SwitchState(false);
+    if (mode === "pano360") {
+      if (state.isTransitioning) cancelActivePanoTransition("tabPano click during transition");
+      await fallbackFromPano360ToInterior();
+      return;
+    }
     if (state.isTransitioning) cancelActivePanoTransition("tabPano click during transition");
     setMode("pano");
     blankPanoSphere();
@@ -1357,27 +1421,29 @@ if (tabPano) {
     }
   });
 }
-if (tabPano360) {
-  tabPano360.addEventListener("click", async () => {
-    if (!PHOTO360.length) return;
-    if (mode === "pano360" || tabPano360.classList.contains("active")) return;
-    if (state.isTransitioning) cancelActivePanoTransition("tabPano360 click during transition");
-    setMode("pano360");
-    blankPanoSphere();
-    try {
-      const tex = await ensurePano360Loaded(state.index);
-      if (!tex) throw new Error(`Missing 360 image for node index ${state.index}`);
-      setSphereMap(tex);
-      requestAnimationFrame(() => fadeInPano(220));
-      preloadNearby360(state.index);
-      revealPanoUIWhenReady();
-    } catch (e) {
-      console.warn("tabPano360: failed to load 360 pano, falling back to interior pano:", e);
-      setMode("pano");
-      const tex = await ensurePanoLoaded(state.index);
-      setSphereMap(tex);
-      requestAnimationFrame(() => fadeInPano(220));
-      revealPanoUIWhenReady();
+if (pano360Switch) {
+  pano360Switch.addEventListener("click", async () => {
+    if (pano360Switch.disabled) return;
+
+    const next = !pano360SwitchEnabled;
+    setPano360SwitchState(next);
+
+    if (next) {
+      try {
+        await enterPano360Mode();
+      } catch (e) {
+        console.warn("Failed to enter 360 mode:", e);
+        setPano360SwitchState(false);
+      }
+      return;
+    }
+
+    if (mode === "pano360") {
+      try {
+        await fallbackFromPano360ToInterior();
+      } catch (e) {
+        console.warn("Failed to fallback from 360 mode:", e);
+      }
     }
   });
 }
@@ -1411,10 +1477,125 @@ function easeInOutCubic(t) {
 }
 
 function setTargetHero(index) {
-  const h = HERO[index] || { yaw: 0, pitch: 0 };
+  const h = getPanoBaseLookForIndex(index);
   targetYaw = h.yaw ?? 0;
   targetPitch = h.pitch ?? 0;
 }
+
+function normalizePanoLook(raw, fallbackYaw = 0, fallbackPitch = 0) {
+  const yawRaw = Number(raw?.yaw);
+  const pitchRaw = Number(raw?.pitch);
+  const nextYaw = Number.isFinite(yawRaw) ? yawRaw : fallbackYaw;
+  const nextPitch = Number.isFinite(pitchRaw) ? pitchRaw : fallbackPitch;
+  return {
+    yaw: wrapPi(nextYaw),
+    pitch: Math.max(-pitchLimit, Math.min(pitchLimit, nextPitch)),
+  };
+}
+
+function buildPhoto360HeroDefaults(photo360HeroConfig = []) {
+  const cfg = Array.isArray(photo360HeroConfig) ? photo360HeroConfig : [];
+  PHOTO360_HERO = Array.from({ length: PHOTO360.length }, (_, i) => {
+    const fallbackYaw = Number(HERO?.[i]?.yaw ?? 0);
+    const fallbackPitch = Number(HERO?.[i]?.pitch ?? 0);
+    return normalizePanoLook(cfg[i], fallbackYaw, fallbackPitch);
+  });
+}
+
+function getPanoBaseLookForIndex(i) {
+  return normalizePanoLook(HERO?.[i], 0, 0);
+}
+
+function getPhoto360BaseLookForIndex(i) {
+  if (i < 0 || i >= PHOTO360.length) return normalizePanoLook(HERO?.[i], 0, 0);
+  if (PHOTO360_HERO[i]) return normalizePanoLook(PHOTO360_HERO[i]);
+  return normalizePanoLook(HERO?.[i], 0, 0);
+}
+
+function getModeBaseLookForIndex(which, i) {
+  return which === "pano360" ? getPhoto360BaseLookForIndex(i) : getPanoBaseLookForIndex(i);
+}
+
+function getPhoto360LookForIndex(i) {
+  return getPhoto360BaseLookForIndex(i);
+}
+
+function getModeLookDelta(which, i, sourceYaw = yaw, sourcePitch = pitch) {
+  const base = getModeBaseLookForIndex(which, i);
+  return {
+    yaw: shortestAngleDelta(base.yaw, Number(sourceYaw) || 0),
+    pitch: (Number(sourcePitch) || 0) - base.pitch,
+  };
+}
+
+function applyModeLookWithDelta(which, i, delta = null) {
+  const base = getModeBaseLookForIndex(which, i);
+  const dYawRaw = Number(delta?.yaw ?? 0);
+  const dPitchRaw = Number(delta?.pitch ?? 0);
+  const dYaw = Number.isFinite(dYawRaw) ? dYawRaw : 0;
+  const dPitch = Number.isFinite(dPitchRaw) ? dPitchRaw : 0;
+
+  yaw = wrapPi(base.yaw + dYaw);
+  pitch = base.pitch + dPitch;
+  targetYaw = yaw;
+  targetPitch = pitch;
+  applyYawPitch();
+
+  return { yaw, pitch };
+}
+
+function applyPhoto360LookForIndex(i) {
+  return applyModeLookWithDelta("pano360", i, { yaw: 0, pitch: 0 });
+}
+
+function roundTo6(n) {
+  return Number((Number(n) || 0).toFixed(6));
+}
+
+function getPhoto360HeroExportArray() {
+  return Array.from({ length: PHOTO360.length }, (_, i) => {
+    const look = getPhoto360BaseLookForIndex(i);
+    return {
+      yaw: roundTo6(look.yaw),
+      pitch: roundTo6(look.pitch),
+    };
+  });
+}
+
+function logPhoto360HeroTourJsonSnippet(savedIndex = null) {
+  const hero = getPhoto360HeroExportArray();
+  const basePhoto360 =
+    TOUR?.photo360 && typeof TOUR.photo360 === "object" ? { ...TOUR.photo360 } : {};
+  const snippet = {
+    photo360: {
+      ...basePhoto360,
+      hero,
+    },
+  };
+  if (savedIndex != null) {
+    const entry = hero[savedIndex];
+    console.log(
+      `[LOCAL DEV] node-${savedIndex + 1} => photo360.hero[${savedIndex}] = { yaw: ${entry.yaw}, pitch: ${entry.pitch} }`
+    );
+  }
+  console.log("[LOCAL DEV] Copy this into tour.json:");
+  console.log(JSON.stringify(snippet, null, 2));
+}
+
+function savePhoto360LookOverrideForIndex(i) {
+  if (!IS_LOCAL_DEV || mode !== "pano360") return null;
+  if (i < 0 || i >= PHOTO360.length) return null;
+
+  const look = normalizePanoLook({ yaw, pitch });
+  PHOTO360_HERO[i] = look;
+
+  if (!TOUR.photo360 || typeof TOUR.photo360 !== "object") TOUR.photo360 = {};
+  if (!Array.isArray(TOUR.photo360.hero)) TOUR.photo360.hero = [];
+  TOUR.photo360.hero[i] = { yaw: look.yaw, pitch: look.pitch };
+
+  return look;
+}
+
 function reorientToHero(index, durationMs = 350) {
   setTargetHero(index);
   autoReorienting = true;
@@ -1840,10 +2021,9 @@ async function goTo(targetIndex) {
       state.index = to;
       updateIndicator(state.index);
       preloadNearby360(state.index);
+      applyPhoto360LookForIndex(state.index);
 
       requestAnimationFrame(() => fadeInPano(220));
-      targetYaw = yaw;
-      targetPitch = pitch;
     } catch (err) {
       console.error("360 view navigation failed:", err);
     } finally {
@@ -1960,6 +2140,8 @@ async function restartTourFromFirstNodeWithFade() {
       targetYaw = yaw;
       targetPitch = pitch;
       applyYawPitch();
+    } else if (mode === "pano360") {
+      applyPhoto360LookForIndex(firstIndex);
     }
 
     requestAnimationFrame(() => fadeInPano(420));
@@ -2019,6 +2201,8 @@ revealPanoUIWhenReady();
 }
 
 async function jumpToPano360(index) {
+  const carryDelta =
+    mode === "pano" && index === state.index ? getModeLookDelta("pano", state.index) : null;
   if (state.isTransitioning) await cancelActivePanoTransition("jumpToPano360");
   setMode("pano360");
   hideYouAreHere();
@@ -2031,6 +2215,7 @@ async function jumpToPano360(index) {
   state.index = index;
   updateIndicator(index);
   preloadNearby360(index);
+  applyModeLookWithDelta("pano360", index, carryDelta);
 
   requestAnimationFrame(() => fadeInPano(320));
   revealPanoUIWhenReady();
@@ -3685,6 +3870,19 @@ window.addEventListener("keydown", (e) => {
     }
   }
 
+  if (IS_LOCAL_DEV && (key === PHOTO360_SAVE_HOTKEY || key === PHOTO360_SAVE_HOTKEY_ALT)) {
+    if (mode !== "pano360") return;
+    const look = savePhoto360LookOverrideForIndex(state.index);
+    if (!look) return;
+    e.preventDefault();
+    console.log(
+      `[LOCAL DEV] Saved 360 start view for node ${state.index + 1}: ` +
+        `yaw=${look.yaw.toFixed(6)}, pitch=${look.pitch.toFixed(6)}`
+    );
+    logPhoto360HeroTourJsonSnippet(state.index);
+    return;
+  }
+
   if (key === "h" && isPanoLikeMode()) {
     console.log(
       `HERO[${state.index}] = { yaw: ${yaw.toFixed(6)}, pitch: ${pitch.toFixed(6)} };`
@@ -3732,7 +3930,7 @@ async function init() {
   if (navWrap) navWrap.classList.add("hidden");
   if (dollBtns) dollBtns.classList.add("hidden");
   if (tabPano) tabPano.style.display = "none";
-  if (tabPano360) tabPano360.style.display = "none";
+  if (pano360Control) pano360Control.classList.add("hidden");
   if (tabDollhouse) tabDollhouse.style.display = "none";
   hideBrandUIHard();
 
@@ -3756,6 +3954,7 @@ async function init() {
     typeof photo360Cfg.pattern === "string" && photo360Cfg.pattern.trim().length
       ? photo360Cfg.pattern.trim()
       : "node-{n}.webp";
+  const photo360HeroConfig = Array.isArray(photo360Cfg.hero) ? photo360Cfg.hero : [];
   const photo360CountRaw = Number(photo360Cfg.count ?? TOUR.panoCount ?? 0);
   const photo360Count = Number.isFinite(photo360CountRaw)
     ? Math.max(0, Math.floor(photo360CountRaw))
@@ -3771,6 +3970,9 @@ async function init() {
         return `${TOUR_BASE}${rel}`;
       })
     : [];
+  buildPhoto360HeroDefaults(photo360HeroConfig);
+
+  setPano360SwitchState(false);
 
   // cache size
   state.panoTextures = new Array(PANOS.length).fill(null);
@@ -3899,7 +4101,7 @@ async function init() {
 
         // Reveal tour UI only AFTER intro video completes.
         if (tabPano) tabPano.style.display = "";
-        if (tabPano360) tabPano360.style.display = PHOTO360.length ? "" : "none";
+        refreshPano360ControlVisibility();
         if (tabDollhouse) tabDollhouse.style.display = "";
         // Now that the intro is finished, allow the brand UI to appear (no flicker).
         showBrandUIHard();

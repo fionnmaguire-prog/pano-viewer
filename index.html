@@ -62,6 +62,7 @@
         /* scale system (tabs + doll buttons) */
         --tab-scale-inactive: 0.94;
         --tab-scale-active: 1.03;
+        --view-tabs-width: 392px;
       }
 
       html,
@@ -228,6 +229,8 @@
         position: absolute;
         left: 14px;
         top: 14px;
+        width: var(--view-tabs-width);
+        box-sizing: border-box;
         z-index: 20;
         display: inline-flex;
         align-items: flex-start;
@@ -243,7 +246,121 @@
       #interiorStack {
         display: inline-flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 0;
+      }
+
+      #pano360Control {
+        position: absolute;
+        left: 14px;
+        top: 124px;
+        width: var(--view-tabs-width);
+        box-sizing: border-box;
+        z-index: 20;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      #pano360Control.hidden {
+        display: none;
+      }
+
+      #pano360Label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 58px;
+        padding: 0 18px;
+        border-radius: 14px;
+        background: var(--midnight-purple);
+        color: rgba(255, 255, 255, 0.98);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: none;
+        user-select: none;
+      }
+
+      #pano360Switch {
+        position: relative;
+        width: 118px;
+        height: 42px;
+        border: 0;
+        border-radius: 999px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, #161020 0 50%, #2e1a47 50% 100%);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.20),
+          0 10px 20px rgba(8, 4, 14, 0.45);
+      }
+
+      #pano360Switch:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
+      #pano360Switch .offText,
+      #pano360Switch .onText {
+        position: absolute;
+        top: 50%;
+        width: 50%;
+        transform: translateY(-50%);
+        z-index: 3;
+        color: #ffffff;
+        text-align: center;
+        pointer-events: none;
+      }
+
+      #pano360Switch .offText {
+        left: 0;
+      }
+
+      #pano360Switch .onText {
+        right: 0;
+      }
+
+      #pano360Switch .switchKnob {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        width: 50px;
+        height: 34px;
+        border-radius: 999px;
+        border: 1px solid rgba(165, 176, 195, 0.95);
+        background:
+          linear-gradient(155deg, #f8fbff 0%, #d6deea 34%, #ffffff 56%, #c4cedd 100%);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.78),
+          0 2px 8px rgba(10, 14, 24, 0.35);
+        z-index: 2;
+        transition: transform 160ms ease;
+      }
+
+      #pano360Switch.isOn .switchKnob {
+        transform: translateX(60px);
+      }
+
+      #pano360Switch:not(.isOn) .offText {
+        color: #111111;
+      }
+
+      #pano360Switch.isOn .onText {
+        color: #111111;
+      }
+
+      #tabPano {
+        position: relative;
+        z-index: 2;
       }
 
       .tabBtn {
@@ -718,9 +835,17 @@
         <div id="tabs">
           <div id="interiorStack">
             <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
-            <button id="tabPano360" class="uiBtn tabBtn hasStroke" type="button">360 VIEW</button>
           </div>
           <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
+        </div>
+
+        <div id="pano360Control" class="hidden" aria-label="360 camera control">
+          <div id="pano360Label">360&deg; camera</div>
+          <button id="pano360Switch" type="button" role="switch" aria-checked="false">
+            <span class="offText">OFF</span>
+            <span class="onText">ON</span>
+            <span class="switchKnob" aria-hidden="true"></span>
+          </button>
         </div>
 
         <a
