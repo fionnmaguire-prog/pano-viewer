@@ -230,6 +230,7 @@
         top: 14px;
         z-index: 20;
         display: inline-flex;
+        align-items: flex-start;
         gap: 10px;
         padding: 10px;
         border-radius: 16px;
@@ -237,6 +238,12 @@
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.10);
+      }
+
+      #interiorStack {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       .tabBtn {
@@ -709,7 +716,10 @@
       <div id="playerStage">
         <div id="app">
         <div id="tabs">
-          <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
+          <div id="interiorStack">
+            <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
+            <button id="tabPano360" class="uiBtn tabBtn hasStroke" type="button">360 VIEW</button>
+          </div>
           <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
         </div>
 
