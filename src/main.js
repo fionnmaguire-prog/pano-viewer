@@ -1189,6 +1189,72 @@ function fadeInPano(duration = 450, fromColor = "black") {
   requestAnimationFrame(tick);
 }
 
+const PANO360_SWAP_BLUR_DURATION_MS = 1000;
+const PANO360_SWAP_BLUR_MAX_PX = 13;
+let pano360BlurToken = 0;
+
+function clearPano360Blur() {
+  if (!renderer?.domElement) return;
+  renderer.domElement.style.filter = "none";
+}
+
+function cancelPano360Blur() {
+  pano360BlurToken++;
+  clearPano360Blur();
+}
+
+function setPano360BlurPx(px) {
+  if (!renderer?.domElement) return;
+  const clamped = Math.max(0, Number(px) || 0);
+  renderer.domElement.style.filter = clamped <= 0.01 ? "none" : `blur(${clamped.toFixed(2)}px)`;
+}
+
+function animatePano360BlurSegment(fromPx, toPx, durationMs, token) {
+  return new Promise((resolve) => {
+    const start = performance.now();
+    const tick = () => {
+      if (token !== pano360BlurToken) {
+        resolve(false);
+        return;
+      }
+      const t = Math.min(1, Math.max(0, (performance.now() - start) / Math.max(1, durationMs)));
+      const e = easeInOutCubic(t);
+      const v = THREE.MathUtils.lerp(fromPx, toPx, e);
+      setPano360BlurPx(v);
+      if (t >= 1) {
+        resolve(true);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+async function playPano360BlurSwap(
+  nextTex,
+  { durationMs = PANO360_SWAP_BLUR_DURATION_MS, onMidpoint = null } = {}
+) {
+  const token = ++pano360BlurToken;
+  const half = Math.max(1, durationMs * 0.5);
+
+  const upOk = await animatePano360BlurSegment(0, PANO360_SWAP_BLUR_MAX_PX, half, token);
+  if (!upOk) return false;
+
+  if (typeof onMidpoint === "function") {
+    await onMidpoint();
+    if (token !== pano360BlurToken) return false;
+  }
+
+  setSphereMap(nextTex);
+
+  const downOk = await animatePano360BlurSegment(PANO360_SWAP_BLUR_MAX_PX, 0, half, token);
+  if (!downOk) return false;
+
+  clearPano360Blur();
+  return true;
+}
+
 // -----------------------------
 // Room label helpers
 // -----------------------------
@@ -1276,6 +1342,7 @@ function setUIEnabled(enabled) {
 // Mode switching (safe)
 // -----------------------------
 let mode = "pano"; // "pano" | "pano360" | "dollhouse"
+let dollhouseExitPanoMode = "pano"; // preferred mode to return to after leaving dollhouse
 
 function ensurePanoUIActive() {
   // Enable pano controls, but do NOT force-show navWrap here.
@@ -1298,6 +1365,7 @@ function setMode(which) {
   }
 
   mode = which;
+  if (which !== "pano360") cancelPano360Blur();
 
   // ✅ invalidate any pending UI reveals from the previous mode
   __uiEpoch++;
@@ -1344,6 +1412,7 @@ function setMode(which) {
   }
 
   if (which !== "dollhouse") hideYouAreHere();
+  refreshPano360ControlVisibility();
   resizeRenderer();
 }
 
@@ -1373,6 +1442,7 @@ async function enterPano360Mode() {
   const fromIndex = state.index;
   const carryDelta = fromMode === "pano" ? getModeLookDelta("pano", fromIndex) : null;
   if (state.isTransitioning) cancelActivePanoTransition("enterPano360Mode");
+  cancelPano360Blur();
 
   setMode("pano360");
   blankPanoSphere();
@@ -1387,20 +1457,46 @@ async function enterPano360Mode() {
 
 function refreshPano360ControlVisibility() {
   const available = PHOTO360.length > 0;
+  const visibleInCurrentMode = mode !== "dollhouse";
+  const shouldShow = available && visibleInCurrentMode;
 
   if (pano360Control) {
-    pano360Control.classList.toggle("hidden", !available);
+    pano360Control.classList.toggle("hidden", !shouldShow);
   }
   if (pano360Switch) {
-    pano360Switch.disabled = !available;
+    pano360Switch.disabled = !shouldShow;
   }
   if (!available) setPano360SwitchState(false);
+}
+
+function rememberDollhouseExitModeFromCurrent() {
+  dollhouseExitPanoMode = mode === "pano360" && isPano360Enabled() ? "pano360" : "pano";
+}
+
+function getDollhouseExitMode() {
+  if (dollhouseExitPanoMode === "pano360" && isPano360Enabled()) return "pano360";
+  return "pano";
+}
+
+async function exitDollhouseToPreferredPano(index = state.index) {
+  const nextMode = getDollhouseExitMode();
+  if (nextMode === "pano360") {
+    setPano360SwitchState(true);
+    await jumpToPano360(index);
+    return;
+  }
+  setPano360SwitchState(false);
+  await jumpToPano(index);
 }
 
 // Tab events
 if (tabPano) {
   tabPano.addEventListener("click", async () => {
     if (mode === "pano") return;
+    if (mode === "dollhouse") {
+      await exitDollhouseToPreferredPano(state.index);
+      return;
+    }
     setPano360SwitchState(false);
     if (mode === "pano360") {
       if (state.isTransitioning) cancelActivePanoTransition("tabPano click during transition");
@@ -1841,6 +1937,7 @@ const state = {
 let transitionCancelToken = 0;
 async function cancelActivePanoTransition(reason = "cancel") {
   transitionCancelToken++;
+  cancelPano360Blur();
   state.isTransitioning = false;
   autoReorienting = false;
   isPointerDown = false;
@@ -2017,16 +2114,19 @@ async function goTo(targetIndex) {
       const nextTex = await ensurePano360Loaded(to);
       if (!nextTex) throw new Error(`Missing 360 pano for node index ${to}`);
 
-      setSphereMap(nextTex);
-      state.index = to;
-      updateIndicator(state.index);
-      preloadNearby360(state.index);
-      applyPhoto360LookForIndex(state.index);
-
-      requestAnimationFrame(() => fadeInPano(220));
+      await playPano360BlurSwap(nextTex, {
+        durationMs: PANO360_SWAP_BLUR_DURATION_MS,
+        onMidpoint: async () => {
+          state.index = to;
+          updateIndicator(state.index);
+          preloadNearby360(state.index);
+          applyPhoto360LookForIndex(state.index);
+        },
+      });
     } catch (err) {
       console.error("360 view navigation failed:", err);
     } finally {
+      clearPano360Blur();
       state.isTransitioning = false;
       autoReorienting = false;
       isPointerDown = false;
@@ -2101,13 +2201,16 @@ async function goTo(targetIndex) {
   }
 }
 
-async function restartTourFromFirstNodeWithFade() {
+async function restartTourToIndexWithFade(targetIndex = 0) {
   if (!isPanoLikeMode()) return;
   if (state.isTransitioning) return;
   const nodeCount = getNodeCountForMode();
   if (nodeCount <= 0) return;
 
-  const firstIndex = 0;
+  const clampedIndex = Math.max(
+    0,
+    Math.min(nodeCount - 1, Number.isFinite(targetIndex) ? targetIndex : 0)
+  );
   state.isTransitioning = true;
   setUIEnabled(false);
   autoReorienting = false;
@@ -2123,25 +2226,25 @@ async function restartTourFromFirstNodeWithFade() {
     fadeOverlay.style.opacity = "1";
 
     blankPanoSphere();
-    const firstTex =
+    const nextTex =
       mode === "pano360"
-        ? await ensurePano360Loaded(firstIndex)
-        : await ensurePanoLoaded(firstIndex);
-    setSphereMap(firstTex);
+        ? await ensurePano360Loaded(clampedIndex)
+        : await ensurePanoLoaded(clampedIndex);
+    setSphereMap(nextTex);
 
-    state.index = firstIndex;
-    updateIndicator(firstIndex);
-    if (mode === "pano360") preloadNearby360(firstIndex);
-    else preloadNearby(firstIndex);
+    state.index = clampedIndex;
+    updateIndicator(clampedIndex);
+    if (mode === "pano360") preloadNearby360(clampedIndex);
+    else preloadNearby(clampedIndex);
 
     if (mode === "pano") {
-      yaw = HERO[firstIndex]?.yaw ?? 0;
-      pitch = HERO[firstIndex]?.pitch ?? 0;
+      yaw = HERO[clampedIndex]?.yaw ?? 0;
+      pitch = HERO[clampedIndex]?.pitch ?? 0;
       targetYaw = yaw;
       targetPitch = pitch;
       applyYawPitch();
     } else if (mode === "pano360") {
-      applyPhoto360LookForIndex(firstIndex);
+      applyPhoto360LookForIndex(clampedIndex);
     }
 
     requestAnimationFrame(() => fadeInPano(420));
@@ -2156,6 +2259,10 @@ async function restartTourFromFirstNodeWithFade() {
   }
 }
 
+async function restartTourFromFirstNodeWithFade() {
+  return restartTourToIndexWithFade(0);
+}
+
 if (forwardBtn) {
   forwardBtn.addEventListener("click", async () => {
     const nextIndex = state.index + 1;
@@ -2166,7 +2273,17 @@ if (forwardBtn) {
     goTo(nextIndex);
   });
 }
-if (backBtn) backBtn.addEventListener("click", () => goTo(state.index - 1));
+if (backBtn) {
+  backBtn.addEventListener("click", async () => {
+    const prevIndex = state.index - 1;
+    if (prevIndex < 0) {
+      const lastIndex = getNodeCountForMode() - 1;
+      if (lastIndex >= 0) await restartTourToIndexWithFade(lastIndex);
+      return;
+    }
+    goTo(prevIndex);
+  });
+}
 
 // -----------------------------
 // jumpToPano (from dollhouse node click)
@@ -2204,6 +2321,7 @@ async function jumpToPano360(index) {
   const carryDelta =
     mode === "pano" && index === state.index ? getModeLookDelta("pano", state.index) : null;
   if (state.isTransitioning) await cancelActivePanoTransition("jumpToPano360");
+  cancelPano360Blur();
   setMode("pano360");
   hideYouAreHere();
   blankPanoSphere();
@@ -3437,7 +3555,7 @@ renderer.domElement.addEventListener(
 
     const ok = await zoomTowardNode(hit, 500, 0.25, 0.85, {
       triggerAt: 0.6,
-      onTrigger: () => jumpToPano(panoIndex),
+      onTrigger: () => exitDollhouseToPreferredPano(panoIndex),
     });
     if (!ok) return;
   },
@@ -3565,6 +3683,7 @@ if (tabDollhouse) {
     const stillValid = () => token === dollhouseEnterToken;
 
     const comingFromPano = isPanoLikeMode();
+    if (comingFromPano) rememberDollhouseExitModeFromCurrent();
     let pm = null;
 
     // ✅ Prevent “reveal twice” (reset branch reveals early)
