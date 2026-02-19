@@ -464,6 +464,47 @@ function getParentOrigin() {
 }
 
 const LISTING_PARENT_ORIGIN = getParentOrigin();
+let lastListingViewMode = null;
+
+function toListingViewMode(playerMode) {
+  return playerMode === "dollhouse" ? "dollhouse" : "interior";
+}
+
+function emitListingViewModeChange(playerMode, source = "") {
+  const viewMode = toListingViewMode(playerMode);
+  if (viewMode === lastListingViewMode) return;
+  lastListingViewMode = viewMode;
+
+  const baseMsg = {
+    tourId: getTourId(),
+    mode: viewMode,
+    viewMode,
+    playerMode: viewMode,
+    state: viewMode,
+    value: viewMode,
+    payload: { mode: viewMode },
+    source,
+  };
+
+  const params = new URLSearchParams(location.search);
+  const debug = params.get("debug") === "1";
+  const targetOrigin =
+    LISTING_PARENT_ORIGIN && LISTING_PARENT_ORIGIN !== "null" ? LISTING_PARENT_ORIGIN : "*";
+
+  try {
+    window.parent?.postMessage({ type: "RTF_VIEW_MODE_CHANGE", ...baseMsg }, targetOrigin);
+    window.parent?.postMessage({ type: "RTF_MODE_CHANGE", ...baseMsg }, targetOrigin);
+    if (debug) {
+      console.log("[RTF postMessage] VIEW_MODE_CHANGE", {
+        targetOrigin,
+        viewMode,
+        source,
+      });
+    }
+  } catch (e) {
+    if (debug) console.warn("[RTF postMessage] VIEW_MODE_CHANGE failed", e);
+  }
+}
 
 // Emits the current pano/node state to the parent listing page.
 // NOTE: This function assumes `mode` exists globally in your script.
@@ -1366,6 +1407,7 @@ function setMode(which) {
 
   mode = which;
   if (which !== "pano360") cancelPano360Blur();
+  emitListingViewModeChange(which, "setMode");
 
   // ✅ invalidate any pending UI reveals from the previous mode
   __uiEpoch++;
