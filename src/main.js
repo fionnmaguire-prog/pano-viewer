@@ -465,6 +465,7 @@ function getParentOrigin() {
 
 const LISTING_PARENT_ORIGIN = getParentOrigin();
 let lastListingViewMode = null;
+let hasEmittedTourStarted = false;
 
 function toListingViewMode(playerMode) {
   return playerMode === "dollhouse" ? "dollhouse" : "interior";
@@ -506,10 +507,38 @@ function emitListingViewModeChange(playerMode, source = "") {
   }
 }
 
+function emitListingTourStarted(source = "unknown") {
+  if (hasEmittedTourStarted) return;
+  hasEmittedTourStarted = true;
+
+  const messageA = {
+    type: "RTF_TOUR_STARTED",
+    started: true,
+    state: "started",
+    source,
+    ts: Date.now(),
+    payload: { started: true, state: "started", source },
+  };
+
+  const messageB = {
+    type: "RTF_TOUR_STATE",
+    started: true,
+    state: "started",
+    value: true,
+    source,
+    payload: { started: true, state: "started", source },
+  };
+
+  window.parent?.postMessage(messageA, "*");
+  window.parent?.postMessage(messageB, "*");
+}
+
 // Emits the current pano/node state to the parent listing page.
 // NOTE: This function assumes `mode` exists globally in your script.
 // It also assumes `getRoomLabelForIndex(i)` exists elsewhere (it does in your file).
 function emitListingNodeChange(panoIndex, source = "") {
+  emitListingTourStarted("first_node");
+
   const idx = Number(panoIndex);
   if (!Number.isFinite(idx) || idx < 0) return;
 
@@ -4249,6 +4278,7 @@ async function init() {
         applyYawPitch();
 
         state.index = 0;
+        emitListingTourStarted("begin_interactive");
         updateIndicator(0);
         preloadNearby(0);
 
