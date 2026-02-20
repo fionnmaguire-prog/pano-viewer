@@ -4242,10 +4242,12 @@ async function init() {
           await playIntroVideoOnce().catch((e) => {
             console.warn("Intro video failed (continuing):", e);
           });
+          emitListingTourStarted("intro_finished");
         } else if (introVideoEl) {
           introVideoEl.pause();
           introVideoEl.classList.remove("show");
           introVideoEl.removeAttribute("src");
+          emitListingTourStarted("intro_skipped");
         }
 
         // Only show the loading overlay if the first pano actually takes a moment to load.
@@ -4316,7 +4318,6 @@ async function init() {
 
     startBtn.addEventListener("click", () => {
       if (beginLaunchInProgress || startBtn.disabled) return;
-      emitListingTourStarted("begin_tour");
 
       beginClickCount += 1;
 
