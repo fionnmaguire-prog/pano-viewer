@@ -507,7 +507,7 @@ function emitListingViewModeChange(playerMode, source = "") {
   }
 }
 
-function emitListingTourStarted(source = "unknown") {
+function emitListingTourStarted(source = "begin_tour") {
   if (hasEmittedTourStarted) return;
   hasEmittedTourStarted = true;
 
@@ -516,8 +516,6 @@ function emitListingTourStarted(source = "unknown") {
     started: true,
     state: "started",
     source,
-    ts: Date.now(),
-    payload: { started: true, state: "started", source },
   };
 
   const messageB = {
@@ -526,7 +524,6 @@ function emitListingTourStarted(source = "unknown") {
     state: "started",
     value: true,
     source,
-    payload: { started: true, state: "started", source },
   };
 
   window.parent?.postMessage(messageA, "*");
@@ -537,8 +534,6 @@ function emitListingTourStarted(source = "unknown") {
 // NOTE: This function assumes `mode` exists globally in your script.
 // It also assumes `getRoomLabelForIndex(i)` exists elsewhere (it does in your file).
 function emitListingNodeChange(panoIndex, source = "") {
-  emitListingTourStarted("first_node");
-
   const idx = Number(panoIndex);
   if (!Number.isFinite(idx) || idx < 0) return;
 
@@ -4278,7 +4273,6 @@ async function init() {
         applyYawPitch();
 
         state.index = 0;
-        emitListingTourStarted("begin_interactive");
         updateIndicator(0);
         preloadNearby(0);
 
@@ -4322,6 +4316,7 @@ async function init() {
 
     startBtn.addEventListener("click", () => {
       if (beginLaunchInProgress || startBtn.disabled) return;
+      emitListingTourStarted("begin_tour");
 
       beginClickCount += 1;
 
