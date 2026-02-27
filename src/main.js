@@ -1201,7 +1201,7 @@ panoCamera.position.set(0, 0, 0.1);
 
 const dollScene = new THREE.Scene();
 dollScene.background = new THREE.Color(0x000000);
-const DOLLHOUSE_REFLECTION_EXR_URL = `${import.meta.env.BASE_URL}environments/mud_road_puresky_4k_hdri.exr`;
+const DOLLHOUSE_REFLECTION_EXR_URL = `${import.meta.env.BASE_URL}environments/mud_road_puresky_1k_hdri.exr`;
 let dollhouseEnvMap = null;
 let dollhouseEnvLoadPromise = null;
 
