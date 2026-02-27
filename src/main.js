@@ -1174,12 +1174,28 @@ renderer.domElement.style.touchAction = "none";
 container.appendChild(renderer.domElement);
 
 const PANO_EXPOSURE = 1.0;
-const DOLL_EXPOSURE = 1.35;
+const DOLL_EXPOSURE = 1.28;
+const DOLL_SCENE_ENV_INTENSITY = 0.13;
+const NAMED_MIRROR_REGEX = /^MIRROR_\d+$/;
+const DOLL_ENV_REFLECTIONS_ONLY = false;
+const DOLL_VIEWER_SUN_INTENSITY = 4.05;
+const DOLL_VIEWER_FILL_INTENSITY = 0.62;
+const DOLL_AMBIENT_INTENSITY = 0.09;
+const DOLL_HEMI_INTENSITY = 0.12;
+const DOLL_VIEWER_SUN_DISTANCE = 16.0;
+const DOLL_VIEWER_SUN_HEIGHT = 6.0;
+const DOLL_VIEWER_SUN_SIDE = 2.0;
+const DOLL_NON_MIRROR_SAT_MULT = 1.22;
+const DOLL_EXTREME_POP_TEST = false;
+const DOLL_EXTREME_POP_EXPOSURE = 2.25;
+const DOLL_EXTREME_POP_SAT_MULT = 2.1;
+const DOLL_EXTREME_POP_LIFT_MULT = 1.25;
+const DOLL_EXTREME_POP_EMISSIVE_INTENSITY = 0.7;
 
 function applyRenderLookForMode(which) {
   if (which === "dollhouse") {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = DOLL_EXPOSURE;
+    renderer.toneMappingExposure = DOLL_EXTREME_POP_TEST ? DOLL_EXTREME_POP_EXPOSURE : DOLL_EXPOSURE;
   } else {
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.toneMappingExposure = PANO_EXPOSURE;
@@ -1201,7 +1217,7 @@ panoCamera.position.set(0, 0, 0.1);
 
 const dollScene = new THREE.Scene();
 dollScene.background = new THREE.Color(0x000000);
-const DOLLHOUSE_REFLECTION_EXR_URL = `${import.meta.env.BASE_URL}environments/mud_road_puresky_1k_hdri.exr`;
+const DOLLHOUSE_REFLECTION_EXR_URL = `${import.meta.env.BASE_URL}environments/ferndale_studio_01_2k.exr`;
 let dollhouseEnvMap = null;
 let dollhouseEnvLoadPromise = null;
 
@@ -1247,6 +1263,31 @@ function blankPanoSphere() {
   panoFadeToken++;
   sphereMat.opacity = 0;
   setSphereMap(null);
+}
+function fadeSphereOpacityTo(targetOpacity = 1, durationMs = 180) {
+  panoFadeToken++;
+  const token = panoFadeToken;
+  const startOpacity = parseFloat(sphereMat.opacity ?? 1) || 0;
+  const endOpacity = Math.max(0, Math.min(1, Number(targetOpacity) || 0));
+  const start = performance.now();
+
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (token !== panoFadeToken) {
+        resolve(false);
+        return;
+      }
+      const t = Math.min(1, Math.max(0, (performance.now() - start) / Math.max(1, durationMs)));
+      const e = easeInOutCubic(t);
+      sphereMat.opacity = THREE.MathUtils.lerp(startOpacity, endOpacity, e);
+      if (t >= 1) {
+        resolve(true);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 function fadeInPano(duration = 450, fromColor = "black") {
   panoFadeToken++;
@@ -1736,6 +1777,11 @@ function setTargetHero(index) {
   targetYaw = h.yaw ?? 0;
   targetPitch = h.pitch ?? 0;
 }
+function setTargetModeHero(which, index) {
+  const h = getModeBaseLookForIndex(which, index);
+  targetYaw = h.yaw ?? 0;
+  targetPitch = h.pitch ?? 0;
+}
 
 function normalizePanoLook(raw, fallbackYaw = 0, fallbackPitch = 0) {
   const yawRaw = Number(raw?.yaw);
@@ -1896,7 +1942,39 @@ function savePhoto360LookOverrideForIndex(i) {
 }
 
 function reorientToHero(index, durationMs = 350) {
-  setTargetHero(index);
+  setTargetModeHero("pano", index);
+  autoReorienting = true;
+
+  const startYaw = yaw;
+  const startPitch = pitch;
+
+  const dy = shortestAngleDelta(startYaw, targetYaw);
+  const dp = targetPitch - startPitch;
+
+  const start = performance.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      const t = (performance.now() - start) / durationMs;
+      const u = Math.min(1, Math.max(0, t));
+      const e = u * u * (3 - 2 * u);
+
+      yaw = startYaw + dy * e;
+      pitch = startPitch + dp * e;
+      applyYawPitch();
+
+      if (u >= 1) {
+        autoReorienting = false;
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+function reorientToModeHero(which, index, durationMs = 350) {
+  setTargetModeHero(which, index);
   autoReorienting = true;
 
   const startYaw = yaw;
@@ -2218,9 +2296,10 @@ function transitionPathReverse(fromIndex) {
   return TOUR_BASE + applyTransitionPattern(TOUR.transitionReversePattern, a, b);
 }
 
-async function playTransition(url, heroTargetIndex) {
+async function playTransition(url, heroTargetIndex, targetLookOverride = null) {
   const myToken = transitionCancelToken;
-  const stillValid = () => myToken === transitionCancelToken && mode === "pano";
+  const stillValid = () =>
+    myToken === transitionCancelToken && (mode === "pano" || mode === "pano360");
 
   await loadVideoSrc(url);
   if (!stillValid()) return;
@@ -2231,6 +2310,15 @@ async function playTransition(url, heroTargetIndex) {
   setSphereMap(transitionTex);
   if (!stillValid()) return;
 
+  const targetLook = targetLookOverride || HERO[heroTargetIndex];
+  await playPreparedTransitionVideo(targetLook);
+}
+
+async function playPreparedTransitionVideo(targetLook = null) {
+  const myToken = transitionCancelToken;
+  const stillValid = () =>
+    myToken === transitionCancelToken && (mode === "pano" || mode === "pano360");
+
   try {
     await transitionVideo.play();
   } catch (e) {
@@ -2239,7 +2327,7 @@ async function playTransition(url, heroTargetIndex) {
   }
 
   const dur = transitionVideo.duration || 0;
-  const hero = HERO[heroTargetIndex];
+  const hero = targetLook;
 
   let steerPromise = Promise.resolve();
   if (dur > 0 && hero) {
@@ -2297,6 +2385,76 @@ async function playTransition(url, heroTargetIndex) {
   targetPitch = pitch;
 }
 
+async function playPano360Transition(url, fromIndex, toIndex, nextTex) {
+  const myToken = transitionCancelToken;
+  const stillValid = () => myToken === transitionCancelToken && mode === "pano360";
+  const blurToken = ++pano360BlurToken;
+  const halfBlurMs = Math.max(1, PANO360_SWAP_BLUR_DURATION_MS * 0.5);
+  const videoStartLook = getPanoBaseLookForIndex(fromIndex);
+  const targetLook = getPanoBaseLookForIndex(toIndex);
+
+  await reorientToModeHero("pano360", fromIndex, 700);
+  if (!stillValid()) return false;
+
+  await loadVideoSrc(url);
+  if (!stillValid()) return false;
+
+  await seekVideo(0);
+  if (!stillValid()) return false;
+
+  const blurToVideoOk = await animatePano360BlurSegment(
+    0,
+    PANO360_SWAP_BLUR_MAX_PX,
+    halfBlurMs,
+    blurToken
+  );
+  if (!blurToVideoOk || !stillValid()) return false;
+
+  // Once fully blurred, snap to the normal interior hero for this node so the
+  // transition video always starts from the same base orientation as pano mode.
+  applyModeLookWithDelta("pano", fromIndex, { yaw: 0, pitch: 0 });
+  if (!stillValid()) return false;
+
+  setSphereMap(transitionTex);
+  const videoPromise = playPreparedTransitionVideo(targetLook || videoStartLook);
+
+  const blurFromVideoOk = await animatePano360BlurSegment(
+    PANO360_SWAP_BLUR_MAX_PX,
+    0,
+    halfBlurMs,
+    blurToken
+  );
+  if (!blurFromVideoOk || !stillValid()) return false;
+
+  await videoPromise;
+  if (!stillValid()) return false;
+
+  const blurToStillOk = await animatePano360BlurSegment(
+    0,
+    PANO360_SWAP_BLUR_MAX_PX,
+    halfBlurMs,
+    blurToken
+  );
+  if (!blurToStillOk || !stillValid()) return false;
+
+  setSphereMap(nextTex);
+  state.index = toIndex;
+  updateIndicator(state.index);
+  preloadNearby360(state.index);
+  applyPhoto360LookForIndex(state.index);
+
+  const blurFromStillOk = await animatePano360BlurSegment(
+    PANO360_SWAP_BLUR_MAX_PX,
+    0,
+    halfBlurMs,
+    blurToken
+  );
+  if (!blurFromStillOk || !stillValid()) return false;
+
+  clearPano360Blur();
+  return true;
+}
+
 // -----------------------------
 // Navigation (pano)
 // -----------------------------
@@ -2312,30 +2470,48 @@ async function goTo(targetIndex) {
   const to = targetIndex;
 
   if (mode === "pano360") {
+    const myToken = transitionCancelToken;
+    const stillValid = () => myToken === transitionCancelToken && mode === "pano360";
     state.isTransitioning = true;
     setUIEnabled(false);
+    const watchdog = setTimeout(() => {
+      if (state.isTransitioning && myToken === transitionCancelToken) {
+        cancelActivePanoTransition("360 transition watchdog timeout");
+      }
+    }, 15000);
 
     try {
       const nextTex = await ensurePano360Loaded(to);
       if (!nextTex) throw new Error(`Missing 360 pano for node index ${to}`);
+      if (!stillValid()) return;
 
-      await playPano360BlurSwap(nextTex, {
-        durationMs: PANO360_SWAP_BLUR_DURATION_MS,
-        onMidpoint: async () => {
-          state.index = to;
-          updateIndicator(state.index);
-          preloadNearby360(state.index);
-          applyPhoto360LookForIndex(state.index);
-        },
-      });
+      const transitionUrl =
+        to === from + 1 ? transitionPathForward(from) : transitionPathReverse(from);
+      await playPano360Transition(transitionUrl, from, to, nextTex);
     } catch (err) {
       console.error("360 view navigation failed:", err);
+      if (!stillValid()) return;
+      try {
+        const tex = await ensurePano360Loaded(to);
+        if (!tex || !stillValid()) return;
+        setSphereMap(tex);
+        state.index = to;
+        updateIndicator(state.index);
+        preloadNearby360(state.index);
+        applyPhoto360LookForIndex(state.index);
+        sphereMat.opacity = 1;
+      } catch (fallbackErr) {
+        console.error("360 fallback load failed:", fallbackErr);
+      }
     } finally {
+      clearTimeout(watchdog);
       clearPano360Blur();
-      state.isTransitioning = false;
-      autoReorienting = false;
-      isPointerDown = false;
-      if (isPanoLikeMode()) setUIEnabled(true);
+      if (stillValid()) {
+        state.isTransitioning = false;
+        autoReorienting = false;
+        isPointerDown = false;
+        if (isPanoLikeMode()) setUIEnabled(true);
+      }
     }
     return;
   }
@@ -2679,8 +2855,12 @@ function updateYouAreHere(dt, nowSec) {
 // Dollhouse lighting + framing
 // -----------------------------
 function applyDollhouseEnvironmentMap(envMap) {
-  dollScene.environment = envMap || null;
-  // Keep backdrop black; use HDRI only for reflective lighting.
+  // Keep HDRI for reflections only if enabled; prevent whole-scene IBL wash.
+  dollScene.environment = DOLL_ENV_REFLECTIONS_ONLY ? null : envMap || null;
+  if ("environmentIntensity" in dollScene)
+    dollScene.environmentIntensity = DOLL_ENV_REFLECTIONS_ONLY ? 0 : DOLL_SCENE_ENV_INTENSITY;
+
+  // Keep backdrop black.
   dollScene.background = new THREE.Color(0x000000);
 }
 
@@ -2733,26 +2913,83 @@ function addDollhouseLights(scene) {
   });
   for (const l of lights) l.removeFromParent();
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x888888, 2.0);
+  if (dollViewerSunTarget?.parent) dollViewerSunTarget.parent.remove(dollViewerSunTarget);
+  if (dollViewerFillTarget?.parent) dollViewerFillTarget.parent.remove(dollViewerFillTarget);
+  dollViewerSunLight = null;
+  dollViewerSunTarget = null;
+  dollViewerFillLight = null;
+  dollViewerFillTarget = null;
+
+  // Viewer-facing directional sun.
+  dollViewerSunLight = new THREE.DirectionalLight(0xffffff, DOLL_VIEWER_SUN_INTENSITY);
+  dollViewerSunTarget = new THREE.Object3D();
+  scene.add(dollViewerSunTarget);
+  dollViewerSunLight.target = dollViewerSunTarget;
+  scene.add(dollViewerSunLight);
+
+  // Complementary fill to avoid flat black backsides.
+  dollViewerFillLight = new THREE.DirectionalLight(0xffffff, DOLL_VIEWER_FILL_INTENSITY);
+  dollViewerFillTarget = new THREE.Object3D();
+  scene.add(dollViewerFillTarget);
+  dollViewerFillLight.target = dollViewerFillTarget;
+  scene.add(dollViewerFillLight);
+
+  // Soft sky/ground balance to lift albedo colors without overexposing.
+  const hemi = new THREE.HemisphereLight(0xf3f7ff, 0x1d1d20, DOLL_HEMI_INTENSITY);
   hemi.position.set(0, 1, 0);
   scene.add(hemi);
 
-  const key = new THREE.DirectionalLight(0xffffff, 1.8);
-  key.position.set(8, 14, 10);
-  scene.add(key);
-
-  const fill = new THREE.DirectionalLight(0xffffff, 1.0);
-  fill.position.set(-10, 10, -6);
-  scene.add(fill);
-
-  const rim = new THREE.DirectionalLight(0xffffff, 0.55);
-  rim.position.set(0, 12, -14);
-  scene.add(rim);
-
-  const amb = new THREE.AmbientLight(0xffffff, 0.55);
+  const amb = new THREE.AmbientLight(0xffffff, DOLL_AMBIENT_INTENSITY);
   scene.add(amb);
 
   applyDollhouseEnvironmentMap(dollhouseEnvMap);
+}
+
+const __viewerSunForward = new THREE.Vector3();
+const __viewerSunRight = new THREE.Vector3();
+const __viewerSunUp = new THREE.Vector3();
+const __viewerSunTargetPos = new THREE.Vector3();
+const __viewerSunPos = new THREE.Vector3();
+const __viewerFillPos = new THREE.Vector3();
+
+function updateViewerFacingDollhouseLights() {
+  if (!dollViewerSunLight || !dollViewerSunTarget) return;
+
+  const target = refCenter || orbit?.target;
+  if (!target) return;
+  __viewerSunTargetPos.copy(target);
+
+  __viewerSunForward.subVectors(target, dollCamera.position);
+  if (__viewerSunForward.lengthSq() < 1e-8) return;
+  __viewerSunForward.normalize();
+
+  __viewerSunUp.copy(dollCamera.up).normalize();
+  __viewerSunRight.crossVectors(__viewerSunForward, __viewerSunUp);
+  if (__viewerSunRight.lengthSq() < 1e-8) {
+    __viewerSunRight.set(1, 0, 0);
+  } else {
+    __viewerSunRight.normalize();
+  }
+
+  __viewerSunPos
+    .copy(__viewerSunTargetPos)
+    .addScaledVector(__viewerSunForward, -DOLL_VIEWER_SUN_DISTANCE)
+    .addScaledVector(__viewerSunUp, DOLL_VIEWER_SUN_HEIGHT)
+    .addScaledVector(__viewerSunRight, DOLL_VIEWER_SUN_SIDE);
+
+  dollViewerSunLight.position.copy(__viewerSunPos);
+  dollViewerSunTarget.position.copy(__viewerSunTargetPos);
+
+  if (dollViewerFillLight && dollViewerFillTarget) {
+    __viewerFillPos
+      .copy(__viewerSunTargetPos)
+      .addScaledVector(__viewerSunForward, DOLL_VIEWER_SUN_DISTANCE * 0.4)
+      .addScaledVector(__viewerSunUp, DOLL_VIEWER_SUN_HEIGHT * 0.4)
+      .addScaledVector(__viewerSunRight, -DOLL_VIEWER_SUN_SIDE * 0.8);
+
+    dollViewerFillLight.position.copy(__viewerFillPos);
+    dollViewerFillTarget.position.copy(__viewerSunTargetPos);
+  }
 }
 
 function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
@@ -2799,13 +3036,23 @@ let refDistance = null;
 let refReady = false;
 let framedOnce = false;
 let hasPlayedInitialDollhouseWipe = false;
+let dollViewerSunLight = null;
+let dollViewerSunTarget = null;
+let dollViewerFillLight = null;
+let dollViewerFillTarget = null;
 
 let defaultDollView = null;
+let defaultDollViewFull = null;
+let defaultDollEntryViewFullFromPano = null;
+let defaultDollEntryViewFullFromPanoNodes = null;
 let needsDollReset = false;
 
 const DOLL_DEFAULT_VIEW_STORAGE_KEY = "doll_default_view_v1";
+const DOLL_DEFAULT_VIEW_FULL_STORAGE_KEY = "doll_default_view_full_v1";
+const DOLL_FULL_DEFAULT_SAVE_HOTKEY = "m";
 const DOLL_WIPE_FIRST_REVEAL_MS = 3600;
 const DOLL_WIPE_SWITCH_MS = 1440;
+const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
 
 function serializeOrbitView(v) {
   return {
@@ -2832,6 +3079,56 @@ function loadSavedDefaultDollView() {
   } catch {
     return null;
   }
+}
+function loadSavedDefaultDollViewFull() {
+  try {
+    const raw = localStorage.getItem(DOLL_DEFAULT_VIEW_FULL_STORAGE_KEY);
+    if (!raw) return null;
+    return deserializeOrbitView(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+function deserializeOptionalOrbitView(o) {
+  if (!o?.camPos || !o?.camQuat || !o?.target) return null;
+  try {
+    return deserializeOrbitView(o);
+  } catch {
+    return null;
+  }
+}
+function shouldUseFullPanoEntryViewForIndex(i) {
+  if (!defaultDollEntryViewFullFromPano) return false;
+  if (!defaultDollEntryViewFullFromPanoNodes || !defaultDollEntryViewFullFromPanoNodes.size) {
+    return false;
+  }
+  const seqNode = getSequenceNodeNumberForIndex(i);
+  return defaultDollEntryViewFullFromPanoNodes.has(seqNode);
+}
+function getDefaultDollViewForKey(key = activeDollKey) {
+  if (key === "full" && defaultDollViewFull) return defaultDollViewFull;
+  return defaultDollView;
+}
+function logDollDefaultViewTourJsonSnippet(key, view) {
+  if (!view) return;
+  const serialized = serializeOrbitView(view);
+  const existing =
+    TOUR?.dollDefaultViews && typeof TOUR.dollDefaultViews === "object"
+      ? { ...TOUR.dollDefaultViews }
+      : {};
+  existing[key] = serialized;
+  console.log(`[LOCAL DEV] Saved dollhouse ${String(key).toUpperCase()} default view.`);
+  console.log(`[LOCAL DEV] dollDefaultViews.${key} =`, serialized);
+  console.log("[LOCAL DEV] Copy this into tour.json:");
+  console.log(
+    JSON.stringify(
+      {
+        dollDefaultViews: existing,
+      },
+      null,
+      2
+    )
+  );
 }
 function saveOrbitView() {
   return {
@@ -2996,13 +3293,13 @@ async function animateToOrbitView(
 }
 
 // Snap orbit to a "near node" view that still pivots around refCenter
-function snapOrbitToNode(mesh, distanceFactor = 0.10) {
-  if (!mesh || !defaultDollView || !refCenter) return;
+function snapOrbitToNode(mesh, targetView, distanceFactor = 0.10) {
+  if (!mesh || !targetView || !refCenter) return;
 
   const nodeWorld = new THREE.Vector3();
   mesh.getWorldPosition(nodeWorld);
 
-  const defaultOffset = defaultDollView.camPos.clone().sub(defaultDollView.target);
+  const defaultOffset = targetView.camPos.clone().sub(targetView.target);
   const defaultRadius = Math.max(0.15, defaultOffset.length());
   const endRadius = Math.max(0.15, defaultRadius * distanceFactor);
 
@@ -3015,7 +3312,7 @@ function snapOrbitToNode(mesh, distanceFactor = 0.10) {
 
   orbit.target.copy(refCenter);
   dollCamera.position.copy(refCenter.clone().add(dir.multiplyScalar(endRadius)));
-  dollCamera.zoom = defaultDollView.zoom ?? 1;
+  dollCamera.zoom = targetView.zoom ?? 1;
   dollCamera.updateProjectionMatrix();
   orbit.update();
 }
@@ -3064,7 +3361,6 @@ async function resetDollhouseFromCurrentPano(
   animated = true,
   { onPrepared = null, onSpinStart = null, allowFullSpin = true } = {}
 ) {
-  if (!defaultDollView) return;
   if (!refCenter) return;
 
   // lock pivot
@@ -3087,11 +3383,6 @@ async function resetDollhouseFromCurrentPano(
   //  2) Animate OUT to the default view while rotating theta back to defaultTheta
   //     using lockTheta=true (so the animation doesn’t also auto-interp theta).
 
-  // Theta of the DEFAULT view around the locked pivot
-  const endTheta = new THREE.Spherical().setFromVector3(
-    defaultDollView.camPos.clone().sub(refCenter)
-  ).theta;
-
   // pick model that actually contains the node
   let node = null;
   try {
@@ -3099,10 +3390,20 @@ async function resetDollhouseFromCurrentPano(
   } catch (e) {
     console.warn("ensureBestModelHasNode failed:", e);
   }
+  const targetDefaultView =
+    activeDollKey === "full" && shouldUseFullPanoEntryViewForIndex(state.index)
+      ? defaultDollEntryViewFullFromPano
+      : getDefaultDollViewForKey(activeDollKey);
+  if (!targetDefaultView) return;
+
+  // Theta of the DEFAULT view around the locked pivot
+  const endTheta = new THREE.Spherical().setFromVector3(
+    targetDefaultView.camPos.clone().sub(refCenter)
+  ).theta;
 
   // 1) start near the node (or fall back to default)
-  if (node) snapOrbitToNode(node, 0.10);
-  else applyOrbitViewWithLockedPivot(defaultDollView);
+  if (node) snapOrbitToNode(node, targetDefaultView, 0.10);
+  else applyOrbitViewWithLockedPivot(targetDefaultView);
 
   // 2) force a deterministic start theta that matches pano look direction
   const startTheta = endTheta + panoDeltaRaw;
@@ -3135,18 +3436,22 @@ async function resetDollhouseFromCurrentPano(
       } catch {}
     }
 
-    await animateToOrbitView(defaultDollView, durationMs, {
+    await animateToOrbitView(targetDefaultView, durationMs, {
       rotateYawDelta: rotateYawDeltaToEnd,
       rotateStartAt: 0.1,
       rotateEndAt: 1.0,
       lockTheta: true,
     });
   } else {
-    applyOrbitViewWithLockedPivot(defaultDollView);
+    applyOrbitViewWithLockedPivot(targetDefaultView);
   }
 
   // after reset, re-sync the marker (new pyramid)
   syncYouAreHereToCurrentPano();
+}
+
+function isNamedMirrorMeshName(name) {
+  return NAMED_MIRROR_REGEX.test(String(name || "").toUpperCase());
 }
 
 function prepDollhouseSceneGraph(root) {
@@ -3154,6 +3459,7 @@ function prepDollhouseSceneGraph(root) {
 
   root.traverse((o) => {
     if (!o.isMesh) return;
+    const isNamedMirrorMesh = isNamedMirrorMeshName(o.name);
 
     o.frustumCulled = false;
     o.castShadow = false;
@@ -3167,6 +3473,42 @@ function prepDollhouseSceneGraph(root) {
         m.map.colorSpace = THREE.SRGBColorSpace;
         m.map.anisotropy = Math.min(8, maxAniso);
         m.map.needsUpdate = true;
+      }
+      if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) {
+        if (!isNamedMirrorMesh) {
+          // In reflections-only mode, avoid IBL influence on non-mirror surfaces.
+          if (DOLL_ENV_REFLECTIONS_ONLY) {
+            m.envMap = null;
+            m.envMapIntensity = 0;
+          }
+
+          if (m.color) {
+            const hsl = { h: 0, s: 0, l: 0 };
+            m.color.getHSL(hsl);
+            m.color.setHSL(hsl.h, Math.min(1, hsl.s * DOLL_NON_MIRROR_SAT_MULT), hsl.l);
+          }
+
+          if (DOLL_EXTREME_POP_TEST) {
+            if (m.color) {
+              const hsl = { h: 0, s: 0, l: 0 };
+              m.color.getHSL(hsl);
+              m.color.setHSL(
+                hsl.h,
+                Math.min(1, hsl.s * DOLL_EXTREME_POP_SAT_MULT),
+                Math.min(1, hsl.l * DOLL_EXTREME_POP_LIFT_MULT)
+              );
+            }
+
+            if (m.emissive) {
+              if (m.color) m.emissive.copy(m.color);
+              else m.emissive.setRGB(1, 1, 1);
+              m.emissiveIntensity = Math.max(
+                Number(m.emissiveIntensity ?? 0),
+                DOLL_EXTREME_POP_EMISSIVE_INTENSITY
+              );
+            }
+          }
+        }
       }
       if ("toneMapped" in m) m.toneMapped = true;
       m.needsUpdate = true;
@@ -3601,6 +3943,18 @@ async function ensureReferenceReady() {
     defaultDollView.target = refCenter.clone();
     defaultDollView.camPos = refCenter.clone().add(offset);
   }
+  if (defaultDollViewFull) {
+    const offset = defaultDollViewFull.camPos.clone().sub(defaultDollViewFull.target);
+    defaultDollViewFull.target = refCenter.clone();
+    defaultDollViewFull.camPos = refCenter.clone().add(offset);
+  }
+  if (defaultDollEntryViewFullFromPano) {
+    const offset = defaultDollEntryViewFullFromPano.camPos.clone().sub(
+      defaultDollEntryViewFullFromPano.target
+    );
+    defaultDollEntryViewFullFromPano.target = refCenter.clone();
+    defaultDollEntryViewFullFromPano.camPos = refCenter.clone().add(offset);
+  }
 }
 
 function setActiveDollRoot(root) {
@@ -3864,7 +4218,19 @@ async function switchDollhouseModel(key) {
   const prevRoot = activeDollRoot;
   setDollButtonsActive(key);
 
-  const view = saveOrbitView();
+  const isFullBoundaryTransition =
+    mode === "dollhouse" &&
+    ((prevKey === "full" && key !== "full") || (prevKey !== "full" && key === "full"));
+  const targetView =
+    key === "full" && shouldUseFullPanoEntryViewForIndex(state.index)
+      ? defaultDollEntryViewFullFromPano
+      : getDefaultDollViewForKey(key);
+  const view =
+    isFullBoundaryTransition && targetView
+      ? targetView
+      : key === "full" && getDefaultDollViewForKey("full")
+        ? getDefaultDollViewForKey("full")
+        : saveOrbitView();
 
   try {
     await ensureReferenceReady();
@@ -3889,12 +4255,22 @@ async function switchDollhouseModel(key) {
     if (useBidirectionalWipeUp || useBidirectionalWipeDown) {
       if (root.parent !== dollScene) dollScene.add(root);
 
-      applyOrbitViewWithLockedPivot(view);
+      const cameraMovePromise =
+        isFullBoundaryTransition && targetView
+          ? animateToOrbitView(targetView, DOLL_MODEL_VIEW_SWITCH_MS)
+          : (applyOrbitViewWithLockedPivot(view), Promise.resolve());
+
       applyReferenceClippingAndLimits();
       if (useBidirectionalWipeUp) {
-        await playDollhouseSwapWipeUp(root, prevRoot, DOLL_WIPE_SWITCH_MS);
+        await Promise.all([
+          playDollhouseSwapWipeUp(root, prevRoot, DOLL_WIPE_SWITCH_MS),
+          cameraMovePromise,
+        ]);
       } else {
-        await playDollhouseSwapWipeDown(root, prevRoot, DOLL_WIPE_SWITCH_MS);
+        await Promise.all([
+          playDollhouseSwapWipeDown(root, prevRoot, DOLL_WIPE_SWITCH_MS),
+          cameraMovePromise,
+        ]);
       }
 
       dollScene.remove(prevRoot);
@@ -3902,10 +4278,17 @@ async function switchDollhouseModel(key) {
     } else {
       setActiveDollRoot(root);
 
-      applyOrbitViewWithLockedPivot(view);
+      const cameraMovePromise =
+        isFullBoundaryTransition && targetView
+          ? animateToOrbitView(targetView, DOLL_MODEL_VIEW_SWITCH_MS)
+          : (applyOrbitViewWithLockedPivot(view), Promise.resolve());
+
       applyReferenceClippingAndLimits();
       if (mode === "dollhouse") {
-        await playDollhouseBottomUpWipe(root, DOLL_WIPE_SWITCH_MS);
+        await Promise.all([
+          playDollhouseBottomUpWipe(root, DOLL_WIPE_SWITCH_MS),
+          cameraMovePromise,
+        ]);
       }
     }
   } catch (e) {
@@ -4043,6 +4426,7 @@ if (tabDollhouse) {
 
         // Default view priority: tour.json -> localStorage -> frame full
         if (!defaultDollView) defaultDollView = loadSavedDefaultDollView();
+        if (!defaultDollViewFull) defaultDollViewFull = loadSavedDefaultDollViewFull();
 
         if (!defaultDollView) {
           // Frame FULL, then save
@@ -4053,6 +4437,7 @@ if (tabDollhouse) {
             frameCameraToObject(dollCamera, orbit, fullEntry.root, 0.7);
             applyReferenceClippingAndLimits();
             defaultDollView = saveOrbitView();
+            if (!defaultDollViewFull) defaultDollViewFull = saveOrbitView();
 
             if (isAdminMode()) {
               try {
@@ -4060,11 +4445,18 @@ if (tabDollhouse) {
                   DOLL_DEFAULT_VIEW_STORAGE_KEY,
                   JSON.stringify(serializeOrbitView(defaultDollView))
                 );
+                if (defaultDollViewFull) {
+                  localStorage.setItem(
+                    DOLL_DEFAULT_VIEW_FULL_STORAGE_KEY,
+                    JSON.stringify(serializeOrbitView(defaultDollViewFull))
+                  );
+                }
               } catch {}
             }
           } else {
             // Fallback: whatever we currently have
             defaultDollView = saveOrbitView();
+            if (!defaultDollViewFull) defaultDollViewFull = saveOrbitView();
           }
         }
       }
@@ -4284,6 +4676,23 @@ window.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (IS_LOCAL_DEV && key === DOLL_FULL_DEFAULT_SAVE_HOTKEY && mode === "dollhouse") {
+    e.preventDefault();
+    defaultDollViewFull = saveOrbitView();
+    if (!TOUR.dollDefaultViews || typeof TOUR.dollDefaultViews !== "object") {
+      TOUR.dollDefaultViews = {};
+    }
+    TOUR.dollDefaultViews.full = serializeOrbitView(defaultDollViewFull);
+    try {
+      localStorage.setItem(
+        DOLL_DEFAULT_VIEW_FULL_STORAGE_KEY,
+        JSON.stringify(TOUR.dollDefaultViews.full)
+      );
+    } catch {}
+    logDollDefaultViewTourJsonSnippet("full", defaultDollViewFull);
+    return;
+  }
+
   if (key === "h" && isPanoLikeMode()) {
     console.log(
       `HERO[${state.index}] = { yaw: ${yaw.toFixed(6)}, pitch: ${pitch.toFixed(6)} };`
@@ -4397,6 +4806,58 @@ async function init() {
 
   // Default doll view from tour.json wins
   if (
+    TOUR.dollDefaultViews &&
+    typeof TOUR.dollDefaultViews === "object" &&
+    TOUR.dollDefaultViews.full &&
+    TOUR.dollDefaultViews.full.camPos &&
+    TOUR.dollDefaultViews.full.camQuat &&
+    TOUR.dollDefaultViews.full.target
+  ) {
+    try {
+      defaultDollViewFull = {
+        camPos: new THREE.Vector3().fromArray(TOUR.dollDefaultViews.full.camPos),
+        camQuat: new THREE.Quaternion(
+          TOUR.dollDefaultViews.full.camQuat[0],
+          TOUR.dollDefaultViews.full.camQuat[1],
+          TOUR.dollDefaultViews.full.camQuat[2],
+          TOUR.dollDefaultViews.full.camQuat[3]
+        ),
+        target: new THREE.Vector3().fromArray(TOUR.dollDefaultViews.full.target),
+        zoom: TOUR.dollDefaultViews.full.zoom ?? 1,
+      };
+    } catch (e) {
+      console.warn("Invalid TOUR.dollDefaultViews.full, ignoring:", e);
+      defaultDollViewFull = null;
+    }
+  }
+
+  // Legacy support: optional standalone full-view key
+  if (
+    !defaultDollViewFull &&
+    TOUR.dollDefaultViewFull &&
+    TOUR.dollDefaultViewFull.camPos &&
+    TOUR.dollDefaultViewFull.camQuat &&
+    TOUR.dollDefaultViewFull.target
+  ) {
+    try {
+      defaultDollViewFull = {
+        camPos: new THREE.Vector3().fromArray(TOUR.dollDefaultViewFull.camPos),
+        camQuat: new THREE.Quaternion(
+          TOUR.dollDefaultViewFull.camQuat[0],
+          TOUR.dollDefaultViewFull.camQuat[1],
+          TOUR.dollDefaultViewFull.camQuat[2],
+          TOUR.dollDefaultViewFull.camQuat[3]
+        ),
+        target: new THREE.Vector3().fromArray(TOUR.dollDefaultViewFull.target),
+        zoom: TOUR.dollDefaultViewFull.zoom ?? 1,
+      };
+    } catch (e) {
+      console.warn("Invalid TOUR.dollDefaultViewFull, ignoring:", e);
+      defaultDollViewFull = null;
+    }
+  }
+
+  if (
     TOUR.dollDefaultView &&
     TOUR.dollDefaultView.camPos &&
     TOUR.dollDefaultView.camQuat &&
@@ -4419,6 +4880,33 @@ async function init() {
       defaultDollView = null;
     }
   }
+
+  if (!defaultDollViewFull && defaultDollView) {
+    defaultDollViewFull = {
+      camPos: defaultDollView.camPos.clone(),
+      camQuat: defaultDollView.camQuat.clone(),
+      target: defaultDollView.target.clone(),
+      zoom: defaultDollView.zoom,
+    };
+  }
+
+  const fullFromPanoCfg =
+    TOUR?.dollEntryViews &&
+    typeof TOUR.dollEntryViews === "object" &&
+    TOUR.dollEntryViews.fullFromPano &&
+    typeof TOUR.dollEntryViews.fullFromPano === "object"
+      ? TOUR.dollEntryViews.fullFromPano
+      : null;
+  const parsedFullFromPanoView = deserializeOptionalOrbitView(fullFromPanoCfg);
+  defaultDollEntryViewFullFromPano = parsedFullFromPanoView;
+  defaultDollEntryViewFullFromPanoNodes = new Set(
+    Array.isArray(fullFromPanoCfg?.nodes)
+      ? fullFromPanoCfg.nodes
+          .map((n) => Number(n))
+          .filter((n) => Number.isFinite(n))
+          .map((n) => Math.trunc(n))
+      : []
+  );
 
   // Start button
   if (startBtn) {
@@ -4584,6 +5072,7 @@ function animate() {
 
   if (mode === "dollhouse") {
     orbit.update();
+    updateViewerFacingDollhouseLights();
     updateNodeHover(dt);
     updateYouAreHere(dt, now / 1000);
     renderer.render(dollScene, dollCamera);
