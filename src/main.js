@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import brandLogoUrl from "./assets/rtf-logo.png";
 
 // -----------------------------
@@ -19,6 +20,8 @@ const navWrap = document.getElementById("navWrap");
 const indicator = document.getElementById("indicator");
 const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
+const enterHomeWrap = document.getElementById("enterHomeWrap");
+const enterHomeBtn = document.getElementById("enterHomeBtn");
 const PLAYER_BASE_WIDTH = 1700;
 const PLAYER_BASE_HEIGHT_MULTIPLIER = 0.59;
 const PLAYER_BASE_HEIGHT = PLAYER_BASE_WIDTH * PLAYER_BASE_HEIGHT_MULTIPLIER;
@@ -264,7 +267,20 @@ function revealPanoUIWhenReady() {
   __afterNextPaint(() => {
     if (epochAtCall !== __uiEpoch) return;
     if (!isPanoLikeMode()) return;
+    const showEnterHome = shouldShowEnterHomeCTA();
 
+    if (showEnterHome) {
+      uiHide(navWrap, { fadeMs: 0 });
+      if (indicator) {
+        indicator.style.display = "none";
+        indicator.style.opacity = "0";
+        indicator.style.pointerEvents = "none";
+      }
+      uiShowAfter(enterHomeWrap, { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+      return;
+    }
+
+    uiHide(enterHomeWrap, { fadeMs: 0 });
     uiShowGroupAfter([navWrap].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
 
     if (indicator) {
@@ -335,7 +351,7 @@ roomLabelEl.id = "roomLabel";
 Object.assign(roomLabelEl.style, {
   position: "absolute",
   left: "16px",
-  bottom: "16px",
+  bottom: "calc(var(--ui-safe-bottom) + 9px)",
   padding: "12px 16px",
   borderRadius: "12px",
   border: "var(--container-stroke-width) solid transparent",
@@ -709,6 +725,11 @@ function applyNodePattern(pattern, i1) {
   out = out.replace("{00}", pad(i1, 2));
   out = out.replace("{0000}", pad(i1, 4));
   return out;
+}
+
+function getTourSequenceIndexBase() {
+  const raw = Number(TOUR?.sequenceIndexBase);
+  return Number.isFinite(raw) ? Math.trunc(raw) : 1;
 }
 
 async function loadTourConfig() {
@@ -1179,7 +1200,10 @@ const panoCamera = new THREE.PerspectiveCamera(
 panoCamera.position.set(0, 0, 0.1);
 
 const dollScene = new THREE.Scene();
-dollScene.background = new THREE.Color(0x111111);
+dollScene.background = new THREE.Color(0x000000);
+const DOLLHOUSE_REFLECTION_EXR_URL = `${import.meta.env.BASE_URL}environments/mud_road_puresky_4k_hdri.exr`;
+let dollhouseEnvMap = null;
+let dollhouseEnvLoadPromise = null;
 
 const dollCamera = new THREE.PerspectiveCamera(
   55,
@@ -1388,8 +1412,75 @@ function getNodeCountForMode(which = mode) {
   return PANOS.length;
 }
 
+function shouldExcludeFirstNodeFromCounter(which = mode) {
+  if (!isPanoLikeMode(which)) return false;
+  return getNodeCountForMode(which) > 1;
+}
+
+function getCounterDisplay(i, which = mode) {
+  const totalRaw = getNodeCountForMode(which);
+  if (!shouldExcludeFirstNodeFromCounter(which)) {
+    return {
+      current: i + 1,
+      total: totalRaw,
+      padded: true,
+    };
+  }
+
+  const total = Math.max(1, totalRaw - 1);
+  const current = Math.min(total, Math.max(1, i));
+  return { current, total, padded: false };
+}
+
+function shouldShowEnterHomeCTA(which = mode, index = state?.index ?? 0) {
+  return isPanoLikeMode(which) && index === 0 && getNodeCountForMode(which) > 1;
+}
+
+function refreshPanoNavPresentationForCurrentNode() {
+  if (!isPanoLikeMode()) {
+    uiHide(enterHomeWrap, { fadeMs: 0 });
+    return;
+  }
+
+  if (shouldShowEnterHomeCTA()) {
+    uiHide(navWrap, { fadeMs: 0 });
+    if (indicator) {
+      indicator.style.display = "none";
+      indicator.style.opacity = "0";
+      indicator.style.pointerEvents = "none";
+    }
+
+    if (enterHomeWrap) {
+      enterHomeWrap.classList.remove("hidden");
+      enterHomeWrap.style.opacity = "1";
+      enterHomeWrap.style.pointerEvents = "auto";
+    }
+    return;
+  }
+
+  uiHide(enterHomeWrap, { fadeMs: 0 });
+
+  if (navWrap) {
+    navWrap.classList.remove("hidden");
+    navWrap.style.opacity = "1";
+    navWrap.style.pointerEvents = "auto";
+    navWrap.style.display = "";
+  }
+  if (indicator) {
+    indicator.style.display = "block";
+    indicator.style.opacity = "1";
+    indicator.style.pointerEvents = "none";
+  }
+}
+
 function updateIndicator(i) {
-  if (indicator) indicator.textContent = `${pad2(i + 1)} / ${pad2(getNodeCountForMode())}`;
+  if (indicator) {
+    const counter = getCounterDisplay(i);
+    indicator.textContent = counter.padded
+      ? `${pad2(counter.current)} / ${pad2(counter.total)}`
+      : `${counter.current} / ${counter.total}`;
+  }
+  refreshPanoNavPresentationForCurrentNode();
 
   setRoomLabel(i);
 
@@ -1402,6 +1493,7 @@ function updateIndicator(i) {
 function setUIEnabled(enabled) {
   if (backBtn) backBtn.disabled = !enabled;
   if (forwardBtn) forwardBtn.disabled = !enabled;
+  if (enterHomeBtn) enterHomeBtn.disabled = !enabled;
 }
 // -----------------------------
 // Mode switching (safe)
@@ -1451,6 +1543,7 @@ function setMode(which) {
     indicator.style.opacity = "0";
     indicator.style.pointerEvents = "none";
   }
+  uiHide(enterHomeWrap, { fadeMs: 0 });
 
   if (!isPanoLikeMode(which)) {
     // Hide room label unless you are hovering nodes (handled by hover logic)
@@ -1714,6 +1807,49 @@ function roundTo6(n) {
   return Number((Number(n) || 0).toFixed(6));
 }
 
+function getSequenceNodeNumberForIndex(i) {
+  return i + getTourSequenceIndexBase();
+}
+
+function getPanoHeroExportArray() {
+  return Array.from({ length: PANOS.length }, (_, i) => {
+    const look = getPanoBaseLookForIndex(i);
+    return {
+      yaw: roundTo6(look.yaw),
+      pitch: roundTo6(look.pitch),
+    };
+  });
+}
+
+function logPanoHeroTourJsonSnippet(savedIndex = null) {
+  const hero = getPanoHeroExportArray();
+  const snippet = { hero };
+
+  if (savedIndex != null) {
+    const entry = hero[savedIndex];
+    const seqNode = getSequenceNodeNumberForIndex(savedIndex);
+    console.log(
+      `[LOCAL DEV] node-${seqNode} => hero[${savedIndex}] = { yaw: ${entry.yaw}, pitch: ${entry.pitch} }`
+    );
+  }
+
+  console.log("[LOCAL DEV] Copy this into tour.json:");
+  console.log(JSON.stringify(snippet, null, 2));
+}
+
+function savePanoLookOverrideForIndex(i) {
+  if (!IS_LOCAL_DEV || mode !== "pano") return null;
+  if (i < 0 || i >= PANOS.length) return null;
+
+  const look = normalizePanoLook({ yaw, pitch });
+  HERO[i] = look;
+
+  if (!Array.isArray(TOUR.hero)) TOUR.hero = [];
+  TOUR.hero[i] = { yaw: look.yaw, pitch: look.pitch };
+
+  return look;
+}
+
 function getPhoto360HeroExportArray() {
   return Array.from({ length: PHOTO360.length }, (_, i) => {
     const look = getPhoto360BaseLookForIndex(i);
@@ -1736,8 +1872,9 @@ function logPhoto360HeroTourJsonSnippet(savedIndex = null) {
   };
   if (savedIndex != null) {
     const entry = hero[savedIndex];
+    const seqNode = getSequenceNodeNumberForIndex(savedIndex);
     console.log(
-      `[LOCAL DEV] node-${savedIndex + 1} => photo360.hero[${savedIndex}] = { yaw: ${entry.yaw}, pitch: ${entry.pitch} }`
+      `[LOCAL DEV] node-${seqNode} => photo360.hero[${savedIndex}] = { yaw: ${entry.yaw}, pitch: ${entry.pitch} }`
     );
   }
   console.log("[LOCAL DEV] Copy this into tour.json:");
@@ -2069,13 +2206,15 @@ function preloadNearby360(i) {
 }
 
 function transitionPathForward(fromIndex) {
-  const a = fromIndex + 1;
-  const b = fromIndex + 2;
+  const base = getTourSequenceIndexBase();
+  const a = fromIndex + base;
+  const b = fromIndex + 1 + base;
   return TOUR_BASE + applyTransitionPattern(TOUR.transitionForwardPattern, a, b);
 }
 function transitionPathReverse(fromIndex) {
-  const a = fromIndex + 1;
-  const b = fromIndex;
+  const base = getTourSequenceIndexBase();
+  const a = fromIndex + base;
+  const b = fromIndex - 1 + base;
   return TOUR_BASE + applyTransitionPattern(TOUR.transitionReversePattern, a, b);
 }
 
@@ -2350,6 +2489,18 @@ if (backBtn) {
     goTo(prevIndex);
   });
 }
+if (enterHomeBtn) {
+  enterHomeBtn.addEventListener("click", async () => {
+    if (!isPanoLikeMode()) return;
+    if (state.isTransitioning) return;
+    if (state.index !== 0) return;
+    if (shouldShowEnterHomeCTA() === false) return;
+
+    const nextIndex = 1;
+    if (nextIndex >= getNodeCountForMode()) return;
+    await goTo(nextIndex);
+  });
+}
 
 // -----------------------------
 // jumpToPano (from dollhouse node click)
@@ -2527,6 +2678,54 @@ function updateYouAreHere(dt, nowSec) {
 // -----------------------------
 // Dollhouse lighting + framing
 // -----------------------------
+function applyDollhouseEnvironmentMap(envMap) {
+  dollScene.environment = envMap || null;
+  // Keep backdrop black; use HDRI only for reflective lighting.
+  dollScene.background = new THREE.Color(0x000000);
+}
+
+function ensureDollhouseReflectionEnvironment() {
+  if (dollhouseEnvMap) return Promise.resolve(dollhouseEnvMap);
+  if (dollhouseEnvLoadPromise) return dollhouseEnvLoadPromise;
+
+  dollhouseEnvLoadPromise = new Promise((resolve, reject) => {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+
+    exrLoader.load(
+      DOLLHOUSE_REFLECTION_EXR_URL,
+      (hdrTexture) => {
+        try {
+          const envRT = pmrem.fromEquirectangular(hdrTexture);
+          dollhouseEnvMap = envRT.texture;
+          applyDollhouseEnvironmentMap(dollhouseEnvMap);
+          resolve(dollhouseEnvMap);
+        } catch (err) {
+          reject(err);
+        } finally {
+          hdrTexture.dispose();
+          pmrem.dispose();
+        }
+      },
+      undefined,
+      (err) => {
+        pmrem.dispose();
+        reject(err);
+      }
+    );
+  })
+    .catch((err) => {
+      console.warn("Failed to load dollhouse reflection HDRI:", err);
+      applyDollhouseEnvironmentMap(null);
+      return null;
+    })
+    .finally(() => {
+      dollhouseEnvLoadPromise = null;
+    });
+
+  return dollhouseEnvLoadPromise;
+}
+
 function addDollhouseLights(scene) {
   const lights = [];
   scene.traverse((o) => {
@@ -2553,7 +2752,7 @@ function addDollhouseLights(scene) {
   const amb = new THREE.AmbientLight(0xffffff, 0.55);
   scene.add(amb);
 
-  scene.background = new THREE.Color(0x111111);
+  applyDollhouseEnvironmentMap(dollhouseEnvMap);
 }
 
 function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
@@ -2589,6 +2788,7 @@ function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
 // Dollhouse loading/cache
 // -----------------------------
 const gltfLoader = new GLTFLoader();
+const exrLoader = new EXRLoader();
 const dollCache = new Map(); // key -> { root, center, size, alignedOnce, nodes }
 let activeDollKey = "down";
 let activeDollRoot = null;
@@ -2976,6 +3176,7 @@ function prepDollhouseSceneGraph(root) {
 
 // Extract meshes named NODE_XX (or containing NODE_) as clickable nodes
 function extractNodes(root) {
+  const sequenceIndexBase = getTourSequenceIndexBase();
   const nodes = [];
   root.traverse((o) => {
     if (!o.isMesh) return;
@@ -2988,8 +3189,8 @@ const m = name.match(/^NODE_(\d+)$/);
     const idx = parseInt(m[1], 10);
     if (!isFinite(idx)) return;
 
-    // Convert 1-based node number -> 0-based pano index
-    o.userData.panoIndex = idx - 1;
+    // Convert configured node numbering base -> 0-based pano index
+    o.userData.panoIndex = idx - sequenceIndexBase;
 
     // Give it a visible-ish material treatment (if you are using dedicated node meshes)
     // IMPORTANT: Clone materials so each node has independent hover state.
@@ -4056,15 +4257,30 @@ window.addEventListener("keydown", (e) => {
   }
 
   if (IS_LOCAL_DEV && (key === PHOTO360_SAVE_HOTKEY || key === PHOTO360_SAVE_HOTKEY_ALT)) {
-    if (mode !== "pano360") return;
-    const look = savePhoto360LookOverrideForIndex(state.index);
-    if (!look) return;
-    e.preventDefault();
-    console.log(
-      `[LOCAL DEV] Saved 360 start view for node ${state.index + 1}: ` +
-        `yaw=${look.yaw.toFixed(6)}, pitch=${look.pitch.toFixed(6)}`
-    );
-    logPhoto360HeroTourJsonSnippet(state.index);
+    if (mode === "pano360") {
+      const look = savePhoto360LookOverrideForIndex(state.index);
+      if (!look) return;
+      e.preventDefault();
+      console.log(
+        `[LOCAL DEV] Saved 360 start view for node ${getSequenceNodeNumberForIndex(state.index)}: ` +
+          `yaw=${look.yaw.toFixed(6)}, pitch=${look.pitch.toFixed(6)}`
+      );
+      logPhoto360HeroTourJsonSnippet(state.index);
+      return;
+    }
+
+    if (mode === "pano") {
+      const look = savePanoLookOverrideForIndex(state.index);
+      if (!look) return;
+      e.preventDefault();
+      console.log(
+        `[LOCAL DEV] Saved pano start view for node ${getSequenceNodeNumberForIndex(state.index)}: ` +
+          `yaw=${look.yaw.toFixed(6)}, pitch=${look.pitch.toFixed(6)}`
+      );
+      logPanoHeroTourJsonSnippet(state.index);
+      return;
+    }
+
     return;
   }
 
@@ -4122,9 +4338,13 @@ async function init() {
   blankPanoSphere();
 
   await loadTourConfig();
+  ensureDollhouseReflectionEnvironment();
 
   // Build PANOS
-  PANOS = Array.from({ length: TOUR.panoCount }, (_, i) => TOUR_BASE + applyPanoPattern(TOUR.panoPattern, i + 1));
+  PANOS = Array.from(
+    { length: TOUR.panoCount },
+    (_, i) => TOUR_BASE + applyPanoPattern(TOUR.panoPattern, i + getTourSequenceIndexBase())
+  );
   HERO = Array.isArray(TOUR.hero) ? TOUR.hero : [];
   ROOMS = Array.isArray(TOUR.rooms) ? TOUR.rooms : [];
 
@@ -4148,7 +4368,10 @@ async function init() {
 
   PHOTO360 = photo360Enabled
     ? Array.from({ length: photo360Count }, (_, i) => {
-        const rel = `${photo360Path}/${applyNodePattern(photo360Pattern, i + 1)}`.replace(
+        const rel = `${photo360Path}/${applyNodePattern(
+          photo360Pattern,
+          i + getTourSequenceIndexBase()
+        )}`.replace(
           /^\/+/,
           ""
         );
