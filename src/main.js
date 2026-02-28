@@ -22,10 +22,6 @@ const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const enterHomeWrap = document.getElementById("enterHomeWrap");
 const enterHomeBtn = document.getElementById("enterHomeBtn");
-const PLAYER_BASE_WIDTH = 1700;
-const PLAYER_BASE_HEIGHT_MULTIPLIER = 0.59;
-const PLAYER_BASE_HEIGHT = PLAYER_BASE_WIDTH * PLAYER_BASE_HEIGHT_MULTIPLIER;
-
 // Brand link UI
 const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
@@ -323,24 +319,23 @@ const cs = window.getComputedStyle(container);
 if (cs.position === "static") container.style.position = "relative";
 
 function applyPlayerScale() {
-  if (!playerShell || !playerStage || !container) return;
-
-  const shellRect = playerShell.getBoundingClientRect();
-  const shellStyles = window.getComputedStyle(playerShell);
-  const padX =
-    (parseFloat(shellStyles.paddingLeft) || 0) + (parseFloat(shellStyles.paddingRight) || 0);
-  const padY =
-    (parseFloat(shellStyles.paddingTop) || 0) + (parseFloat(shellStyles.paddingBottom) || 0);
-
-  const availableW = Math.max(1, shellRect.width - padX);
-  const availableH = Math.max(1, shellRect.height - padY);
-  const scale = Math.min(1, availableW / PLAYER_BASE_WIDTH, availableH / PLAYER_BASE_HEIGHT);
-  const scaledW = PLAYER_BASE_WIDTH * scale;
-  const scaledH = PLAYER_BASE_HEIGHT * scale;
-
-  playerStage.style.width = `${scaledW}px`;
-  playerStage.style.height = `${scaledH}px`;
-  container.style.transform = `scale(${scale})`;
+  if (playerShell) {
+    playerShell.style.position = "absolute";
+    playerShell.style.inset = "0";
+    playerShell.style.width = "100%";
+    playerShell.style.height = "100%";
+  }
+  if (playerStage) {
+    playerStage.style.width = "100%";
+    playerStage.style.height = "100%";
+  }
+  if (container) {
+    container.style.position = "absolute";
+    container.style.inset = "0";
+    container.style.width = "100%";
+    container.style.height = "100%";
+    container.style.transform = "none";
+  }
 }
 
 // -----------------------------
