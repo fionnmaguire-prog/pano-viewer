@@ -32,6 +32,7 @@
         --chrome-specular-edge: rgba(245, 250, 255, 0.42);
         --chrome-depth-shadow: rgba(10, 14, 24, 0.46);
         --container-stroke-width: 3px;
+        --ui-responsive-scale: 1;
 
         /* NAV COLORS */
         --nav-bg: #ffffff;
@@ -62,6 +63,30 @@
         --tab-scale-inactive: 0.94;
         --tab-scale-active: 1.03;
         --view-tabs-width: 392px;
+      }
+
+      @media (max-width: 1440px), (max-height: 920px) {
+        :root {
+          --ui-responsive-scale: 0.97;
+        }
+      }
+
+      @media (max-width: 1180px), (max-height: 820px) {
+        :root {
+          --ui-responsive-scale: 0.94;
+        }
+      }
+
+      @media (max-width: 980px), (max-height: 720px) {
+        :root {
+          --ui-responsive-scale: 0.91;
+        }
+      }
+
+      @media (max-width: 820px), (max-height: 640px) {
+        :root {
+          --ui-responsive-scale: 0.88;
+        }
       }
 
       html,
@@ -124,11 +149,11 @@
 
         border: var(--container-stroke-width) solid transparent;
 
-        height: 52px;
-        padding: 0 18px;
+        height: calc(52px * var(--ui-responsive-scale));
+        padding: 0 calc(18px * var(--ui-responsive-scale));
         border-radius: var(--btn-radius);
 
-        font-size: 13px;
+        font-size: calc(13px * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.12em;
         text-transform: uppercase;
@@ -213,15 +238,15 @@
 
       #tabs {
         position: absolute;
-        left: 14px;
-        top: 14px;
-        width: var(--view-tabs-width);
+        left: calc(14px * var(--ui-responsive-scale));
+        top: calc(14px * var(--ui-responsive-scale));
+        width: calc(var(--view-tabs-width) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
         display: inline-flex;
         align-items: flex-start;
-        gap: 10px;
-        padding: 10px;
+        gap: calc(10px * var(--ui-responsive-scale));
+        padding: calc(10px * var(--ui-responsive-scale));
         border-radius: 16px;
         background: rgba(0, 0, 0, 0.38);
         backdrop-filter: blur(10px);
@@ -237,15 +262,15 @@
 
       #pano360Control {
         position: absolute;
-        left: 14px;
-        top: 110px;
-        width: var(--view-tabs-width);
+        left: calc(14px * var(--ui-responsive-scale));
+        top: calc(110px * var(--ui-responsive-scale));
+        width: calc(var(--view-tabs-width) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 10px;
+        gap: calc(10px * var(--ui-responsive-scale));
       }
 
       #pano360Control.hidden {
@@ -256,12 +281,12 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        height: 29px;
-        padding: 0 18px;
+        height: calc(29px * var(--ui-responsive-scale));
+        padding: 0 calc(18px * var(--ui-responsive-scale));
         border-radius: 14px;
         background: var(--midnight-purple);
         color: rgba(255, 255, 255, 0.98);
-        font-size: 14px;
+        font-size: calc(14px * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: none;
@@ -270,8 +295,8 @@
 
       #pano360Switch {
         position: relative;
-        width: 118px;
-        height: 42px;
+        width: calc(118px * var(--ui-responsive-scale));
+        height: calc(42px * var(--ui-responsive-scale));
         border: 0;
         border-radius: 999px;
         padding: 0;
@@ -280,7 +305,7 @@
         justify-content: center;
         cursor: pointer;
         color: #ffffff;
-        font-size: 11px;
+        font-size: calc(11px * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -317,10 +342,10 @@
 
       #pano360Switch .switchKnob {
         position: absolute;
-        left: 4px;
-        top: 4px;
-        width: 50px;
-        height: 34px;
+        left: calc(4px * var(--ui-responsive-scale));
+        top: calc(4px * var(--ui-responsive-scale));
+        width: calc(50px * var(--ui-responsive-scale));
+        height: calc(34px * var(--ui-responsive-scale));
         border-radius: 999px;
         border: 1px solid rgba(165, 176, 195, 0.95);
         background:
@@ -333,7 +358,7 @@
       }
 
       #pano360Switch.isOn .switchKnob {
-        transform: translateX(60px);
+        transform: translateX(calc(60px * var(--ui-responsive-scale)));
       }
 
       #pano360Switch:not(.isOn) .offText {
@@ -350,11 +375,11 @@
       }
 
       .tabBtn {
-        min-width: 181px;
-        height: 66px;
-        padding: 0 23px;
+        min-width: calc(181px * var(--ui-responsive-scale));
+        height: calc(66px * var(--ui-responsive-scale));
+        padding: 0 calc(23px * var(--ui-responsive-scale));
         border-radius: 20px;
-        font-size: 16.6px;
+        font-size: calc(16.6px * var(--ui-responsive-scale));
         justify-content: center;
         text-align: center;
 
@@ -418,15 +443,15 @@
       /* Brand link (top-right) */
       #brandLink {
         position: absolute;
-        top: 14px;
-        right: 14px;
+        top: calc(14px * var(--ui-responsive-scale));
+        right: calc(14px * var(--ui-responsive-scale));
         z-index: 20;
 
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        gap: calc(10px * var(--ui-responsive-scale));
 
-        padding: 12px 14px;
+        padding: calc(12px * var(--ui-responsive-scale)) calc(14px * var(--ui-responsive-scale));
         border-radius: 999px;
 
         background: rgba(0, 0, 0, 0.45);
@@ -436,7 +461,7 @@
 
         color: rgba(255, 255, 255, 0.92);
         text-decoration: none;
-        font-size: 13px;
+        font-size: calc(13px * var(--ui-responsive-scale));
         letter-spacing: 0.02em;
         user-select: none;
 
@@ -453,7 +478,7 @@
       }
 
       #brandLogo {
-        height: 24px;
+        height: calc(24px * var(--ui-responsive-scale));
         width: auto;
         display: block;
       }
@@ -494,14 +519,14 @@
       #indicator {
         position: absolute;
         left: 50%;
-        bottom: calc(var(--ui-safe-bottom) + 26px);
+        bottom: calc(var(--ui-safe-bottom) + calc(26px * var(--ui-responsive-scale)));
         transform: translateX(-50%);
         z-index: 12;
 
-        padding: 10px 15px;
+        padding: calc(10px * var(--ui-responsive-scale)) calc(15px * var(--ui-responsive-scale));
         border-radius: 999px;
         border: var(--container-stroke-width) solid transparent;
-        font-size: 16px;
+        font-size: calc(16px * var(--ui-responsive-scale));
         font-weight: 650;
         color: rgba(255, 255, 255, 0.92);
         background:
@@ -520,7 +545,7 @@
       #enterHomeWrap {
         position: absolute;
         left: 50%;
-        bottom: calc(var(--ui-safe-bottom) + 4px);
+        bottom: calc(var(--ui-safe-bottom) + calc(4px * var(--ui-responsive-scale)));
         transform: translateX(-50%);
         z-index: 12;
         display: inline-block;
@@ -546,9 +571,9 @@
         content: "";
         position: absolute;
         left: 50%;
-        bottom: -14px;
+        bottom: calc(-14px * var(--ui-responsive-scale));
         width: 110%;
-        height: 18px;
+        height: calc(18px * var(--ui-responsive-scale));
         border-radius: 999px;
         background: rgba(10, 14, 24, 0.42);
         filter: blur(6px);
@@ -560,11 +585,11 @@
 
       #navWrap {
         position: absolute;
-        right: 14px;
+        right: calc(14px * var(--ui-responsive-scale));
         bottom: var(--ui-safe-bottom);
         z-index: 12;
         display: flex;
-        gap: 12px;
+        gap: calc(12px * var(--ui-responsive-scale));
         transition: opacity 160ms ease;
       }
 
@@ -575,15 +600,15 @@
 
       #nav {
         display: inline-flex;
-        gap: 12px;
+        gap: calc(12px * var(--ui-responsive-scale));
       }
 
       #nav button {
-        height: 87px;
-        padding: 0 33px;
-        font-size: 21px;
+        height: calc(87px * var(--ui-responsive-scale));
+        padding: 0 calc(33px * var(--ui-responsive-scale));
+        font-size: calc(21px * var(--ui-responsive-scale));
         letter-spacing: 0.14em;
-        min-width: 180px;
+        min-width: calc(180px * var(--ui-responsive-scale));
 
         --btn-bg: var(--tab-active-bg);
         --btn-text: rgba(255, 255, 255, 0.98);
@@ -616,14 +641,14 @@
 
       #dollBtns {
         position: absolute;
-        right: 14px;
+        right: calc(14px * var(--ui-responsive-scale));
         bottom: var(--ui-safe-bottom);
         z-index: 12;
 
         display: inline-flex;
-        gap: 12px;
+        gap: calc(12px * var(--ui-responsive-scale));
 
-        padding: 10px;
+        padding: calc(10px * var(--ui-responsive-scale));
         border-radius: 16px;
 
         background: rgba(0, 0, 0, 0.38);
@@ -637,11 +662,11 @@
       }
 
       .dollBtn {
-        min-width: 144px;
-        height: 78px;
-        padding: 0 27px;
+        min-width: calc(144px * var(--ui-responsive-scale));
+        height: calc(78px * var(--ui-responsive-scale));
+        padding: 0 calc(27px * var(--ui-responsive-scale));
         border-radius: 24px;
-        font-size: 19.5px;
+        font-size: calc(19.5px * var(--ui-responsive-scale));
         justify-content: center;
         text-align: center;
 
@@ -752,9 +777,9 @@
         content: "";
         position: absolute;
         left: 50%;
-        bottom: -14px;
+        bottom: calc(-14px * var(--ui-responsive-scale));
         width: 95%;
-        height: 18px;
+        height: calc(18px * var(--ui-responsive-scale));
         border-radius: 999px;
         background: rgba(10, 14, 24, 0.42);
         filter: blur(6px);
@@ -802,9 +827,9 @@
         border: var(--container-stroke-width) solid transparent;
         cursor: pointer;
 
-        padding: 21px 30px;
+        padding: calc(21px * var(--ui-responsive-scale)) calc(30px * var(--ui-responsive-scale));
         border-radius: 18px;
-        font-size: 22.5px;
+        font-size: calc(22.5px * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.10em;
         text-transform: uppercase;
