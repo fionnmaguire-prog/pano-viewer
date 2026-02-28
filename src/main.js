@@ -753,6 +753,14 @@ function getIntroVideoUrl() {
       : "intro/intro.mp4";
   return `${TOUR_BASE}${relPath.replace(/^\/+/, "")}`;
 }
+function getTourStartVideoUrl() {
+  const relPath =
+    typeof TOUR?.tourStartVideo === "string" && TOUR.tourStartVideo.trim().length
+      ? TOUR.tourStartVideo.trim()
+      : "";
+  if (!relPath) return "";
+  return `${TOUR_BASE}${relPath.replace(/^\/+/, "")}`;
+}
 function showStartOverlay() {
   if (!startOverlay) return;
   startOverlay.classList.remove("hidden");
@@ -829,6 +837,45 @@ async function playIntroVideoOnce() {
   introVideoEl.pause();
   introVideoEl.classList.remove("show");
   if (startOverlay) startOverlay.classList.remove("videoMode");
+}
+
+async function playTourStartVideoOnce(targetIndex = 0) {
+  const url = getTourStartVideoUrl();
+  if (!url) return false;
+
+  const targetLook = getPanoBaseLookForIndex(targetIndex);
+
+  try {
+    await loadVideoSrc(url);
+    await seekVideo(0);
+
+    setSphereMap(transitionTex);
+    sphereMat.opacity = 1;
+
+    yaw = targetLook.yaw ?? 0;
+    pitch = pitchLimit;
+    targetYaw = yaw;
+    targetPitch = pitch;
+    applyYawPitch();
+
+    await playPreparedTransitionVideo(targetLook, {
+      startFrac: 0.0,
+      endFrac: 1.0,
+      onFirstFrame: async () => {
+        if (startOverlay) startOverlay.classList.remove("videoMode");
+        hideStartOverlay();
+      },
+    });
+
+    return true;
+  } catch (e) {
+    console.warn("Tour-start video failed (continuing):", e);
+    return false;
+  } finally {
+    try {
+      transitionVideo.pause();
+    } catch {}
+  }
 }
 
 // -----------------------------
@@ -2314,7 +2361,10 @@ async function playTransition(url, heroTargetIndex, targetLookOverride = null) {
   await playPreparedTransitionVideo(targetLook);
 }
 
-async function playPreparedTransitionVideo(targetLook = null) {
+async function playPreparedTransitionVideo(
+  targetLook = null,
+  { startFrac = 0.2, endFrac = 1.0, onFirstFrame = null } = {}
+) {
   const myToken = transitionCancelToken;
   const stillValid = () =>
     myToken === transitionCancelToken && (mode === "pano" || mode === "pano360");
@@ -2324,6 +2374,14 @@ async function playPreparedTransitionVideo(targetLook = null) {
   } catch (e) {
     console.warn("Transition video play failed:", e);
     return;
+  }
+
+  if (typeof onFirstFrame === "function") {
+    await waitForFirstIntroFrame(transitionVideo);
+    if (!stillValid()) return;
+    try {
+      await onFirstFrame();
+    } catch {}
   }
 
   const dur = transitionVideo.duration || 0;
@@ -2339,8 +2397,8 @@ async function playPreparedTransitionVideo(targetLook = null) {
       toYaw: hero.yaw ?? 0,
       toPitch: hero.pitch ?? 0,
       durationSec: dur,
-      startFrac: 0.2,
-      endFrac: 1.0,
+      startFrac,
+      endFrac,
     });
   }
 
@@ -4613,6 +4671,8 @@ async function preloadStartAssets() {
   __preloadStartAssetsPromise = (async () => {
     await ensurePanoLoaded(0).catch(() => {});
     if (PHOTO360.length) await ensurePano360Loaded(0).catch(() => {});
+    const tourStartUrl = getTourStartVideoUrl();
+    if (tourStartUrl) loadVideoSrc(tourStartUrl).catch(() => {});
     await yieldToBrowser(0);
 
     // Priority: down
@@ -4989,13 +5049,28 @@ async function init() {
         updateIndicator(0);
         preloadNearby(0);
 
+        const playedTourStart = !skipIntro ? await playTourStartVideoOnce(0) : false;
+
+        setSphereMap(first);
+        yaw = HERO[0]?.yaw ?? 0;
+        pitch = HERO[0]?.pitch ?? 0;
+        targetYaw = yaw;
+        targetPitch = pitch;
+        applyYawPitch();
+
         setUIEnabled(true);
         // Fade pano UI in only after the first pano is actually visible.
         revealPanoUIWhenReady();
 
-        requestAnimationFrame(() => fadeInPano(450, skipIntro ? "black" : "white"));
-        if (startOverlay) startOverlay.classList.remove("videoMode");
-        hideStartOverlay();
+        if (playedTourStart) {
+          sphereMat.opacity = 1;
+          if (startOverlay) startOverlay.classList.remove("videoMode");
+          hideStartOverlay();
+        } else {
+          requestAnimationFrame(() => fadeInPano(450, skipIntro ? "black" : "white"));
+          if (startOverlay) startOverlay.classList.remove("videoMode");
+          hideStartOverlay();
+        }
 
         // Reveal tour UI only AFTER intro video completes.
         if (tabPano) tabPano.style.display = "";
