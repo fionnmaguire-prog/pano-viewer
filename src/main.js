@@ -839,6 +839,41 @@ async function playIntroVideoOnce() {
   if (startOverlay) startOverlay.classList.remove("videoMode");
 }
 
+function preloadVideoUrl(url) {
+  return new Promise((resolve, reject) => {
+    if (!url) {
+      resolve(false);
+      return;
+    }
+
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.crossOrigin = "anonymous";
+
+    const cleanup = () => {
+      v.removeEventListener("loadedmetadata", onReady);
+      v.removeEventListener("canplay", onReady);
+      v.removeEventListener("error", onError);
+    };
+    const onReady = () => {
+      cleanup();
+      resolve(true);
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error(`Failed to preload video: ${url}`));
+    };
+
+    v.addEventListener("loadedmetadata", onReady, { once: true });
+    v.addEventListener("canplay", onReady, { once: true });
+    v.addEventListener("error", onError, { once: true });
+    v.src = url;
+    v.load();
+  });
+}
+
 async function playTourStartVideoOnce(targetIndex = 0) {
   const url = getTourStartVideoUrl();
   if (!url) return false;
@@ -861,6 +896,7 @@ async function playTourStartVideoOnce(targetIndex = 0) {
     await playPreparedTransitionVideo(targetLook, {
       startFrac: 0.0,
       endFrac: 1.0,
+      requireTransitionState: false,
       onFirstFrame: async () => {
         if (startOverlay) startOverlay.classList.remove("videoMode");
         hideStartOverlay();
@@ -1221,7 +1257,7 @@ renderer.domElement.style.touchAction = "none";
 container.appendChild(renderer.domElement);
 
 const PANO_EXPOSURE = 1.0;
-const DOLL_EXPOSURE = 1.28;
+const DOLL_EXPOSURE = 1.32;
 const DOLL_SCENE_ENV_INTENSITY = 0.13;
 const NAMED_MIRROR_REGEX = /^MIRROR_\d+$/;
 const DOLL_ENV_REFLECTIONS_ONLY = false;
@@ -2060,6 +2096,7 @@ async function steerCameraDuringVideo({
   durationSec,
   startFrac = 0.2,
   endFrac = 1.0,
+  requireTransitionState = true,
 }) {
   autoReorienting = true;
   const start = performance.now();
@@ -2070,7 +2107,7 @@ async function steerCameraDuringVideo({
 
   return new Promise((resolve) => {
     function tick() {
-      if (!state.isTransitioning) {
+      if (requireTransitionState && !state.isTransitioning) {
         autoReorienting = false;
         resolve();
         return;
@@ -2363,7 +2400,12 @@ async function playTransition(url, heroTargetIndex, targetLookOverride = null) {
 
 async function playPreparedTransitionVideo(
   targetLook = null,
-  { startFrac = 0.2, endFrac = 1.0, onFirstFrame = null } = {}
+  {
+    startFrac = 0.2,
+    endFrac = 1.0,
+    onFirstFrame = null,
+    requireTransitionState = true,
+  } = {}
 ) {
   const myToken = transitionCancelToken;
   const stillValid = () =>
@@ -2373,7 +2415,7 @@ async function playPreparedTransitionVideo(
     await transitionVideo.play();
   } catch (e) {
     console.warn("Transition video play failed:", e);
-    return;
+    throw e;
   }
 
   if (typeof onFirstFrame === "function") {
@@ -2399,6 +2441,7 @@ async function playPreparedTransitionVideo(
       durationSec: dur,
       startFrac,
       endFrac,
+      requireTransitionState,
     });
   }
 
@@ -4672,7 +4715,7 @@ async function preloadStartAssets() {
     await ensurePanoLoaded(0).catch(() => {});
     if (PHOTO360.length) await ensurePano360Loaded(0).catch(() => {});
     const tourStartUrl = getTourStartVideoUrl();
-    if (tourStartUrl) loadVideoSrc(tourStartUrl).catch(() => {});
+    if (tourStartUrl) preloadVideoUrl(tourStartUrl).catch(() => {});
     await yieldToBrowser(0);
 
     // Priority: down
@@ -4684,7 +4727,7 @@ async function preloadStartAssets() {
     loadDollModel("up").catch(() => {});
 
     ensurePanoLoaded(1).catch(() => {});
-    if (PANOS.length > 1) loadVideoSrc(transitionPathForward(0)).catch(() => {});
+    if (PANOS.length > 1) preloadVideoUrl(transitionPathForward(0)).catch(() => {});
 
     await yieldToBrowser(50);
   })();
