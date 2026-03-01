@@ -895,6 +895,148 @@
       #introVideo.show {
         opacity: 1;
       }
+
+      @media (max-width: 820px), (max-aspect-ratio: 1/1) {
+        :root {
+          /* mobile-only tuning */
+          --ui-responsive-scale: 0.78;
+          --view-tabs-width: min(92vw, 420px);
+          --ui-safe-bottom: max(12px, env(safe-area-inset-bottom));
+        }
+
+        /* give everything a little breathing room + safe areas */
+        #playerShell {
+          padding:
+            max(10px, env(safe-area-inset-top))
+            max(10px, env(safe-area-inset-right))
+            max(10px, env(safe-area-inset-bottom))
+            max(10px, env(safe-area-inset-left));
+          box-sizing: border-box;
+        }
+
+        /* TOP: tabs become centered and responsive */
+        #tabs {
+          left: 50%;
+          right: auto;
+          top: max(10px, env(safe-area-inset-top));
+          transform: translateX(-50%);
+          width: var(--view-tabs-width);
+          max-width: 92vw;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        /* allow tabs to shrink and not overflow */
+        .tabBtn {
+          min-width: 0 !important;
+          flex: 1 1 0;
+          height: auto;
+          padding: 14px 12px;
+          font-size: 14px;
+          border-radius: 18px;
+          letter-spacing: 0.10em;
+        }
+
+        /* 360 control: center under tabs */
+        #pano360Control {
+          left: 50%;
+          top: calc(max(10px, env(safe-area-inset-top)) + 96px);
+          transform: translateX(-50%);
+          width: var(--view-tabs-width);
+          max-width: 92vw;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        #pano360Label {
+          font-size: 13px;
+          padding: 0 12px;
+          height: 28px;
+          border-radius: 14px;
+          white-space: nowrap;
+        }
+
+        #pano360Switch {
+          width: 116px;
+          height: 40px;
+          font-size: 11px;
+        }
+
+        /* Brand link: keep it from colliding */
+        #brandLink {
+          top: max(10px, env(safe-area-inset-top));
+          right: max(10px, env(safe-area-inset-right));
+          padding: 10px 12px;
+          font-size: 12px;
+          gap: 8px;
+        }
+        /* on mobile we prefer logo-only to reduce clutter */
+        #brandText { display: none !important; }
+
+        /* DOLL buttons: move to centered row ABOVE nav so it can't collide */
+        #dollBtns {
+          left: 50%;
+          right: auto;
+          bottom: calc(var(--ui-safe-bottom) + 92px);
+          transform: translateX(-50%);
+          max-width: 92vw;
+          justify-content: center;
+          gap: 10px;
+          padding: 10px;
+        }
+
+        .dollBtn {
+          min-width: 0 !important;
+          width: auto;
+          flex: 1 1 0;
+          height: auto;
+          padding: 14px 12px;
+          font-size: 14px;
+          border-radius: 18px;
+          letter-spacing: 0.10em;
+        }
+
+        /* Indicator: keep centered and above nav */
+        #indicator {
+          bottom: calc(var(--ui-safe-bottom) + 152px);
+          font-size: 14px;
+          padding: 8px 12px;
+          max-width: 92vw;
+          text-align: center;
+        }
+
+        /* Enter home: also above nav */
+        #enterHomeWrap {
+          bottom: calc(var(--ui-safe-bottom) + 120px);
+        }
+
+        /* NAV: center it, make buttons equal width, remove large min-width */
+        #navWrap {
+          left: 50%;
+          right: auto;
+          bottom: var(--ui-safe-bottom);
+          transform: translateX(-50%);
+          width: min(92vw, 520px);
+          justify-content: center;
+        }
+
+        #nav {
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        #nav button {
+          min-width: 0 !important;          /* critical: remove desktop min width */
+          width: 100%;
+          height: 64px;                      /* stable tap target */
+          padding: 0 14px;
+          font-size: 16px;
+          letter-spacing: 0.12em;
+          border-radius: 18px;
+        }
+      }
     </style>
   </head>
 
