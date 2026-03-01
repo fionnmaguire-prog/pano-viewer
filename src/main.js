@@ -3149,6 +3149,40 @@ const DOLL_FULL_DEFAULT_SAVE_HOTKEY = "m";
 const DOLL_WIPE_FIRST_REVEAL_MS = 3600;
 const DOLL_WIPE_SWITCH_MS = 1440;
 const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
+const MOBILE_PLAYER_LAYOUT_QUERY = "(max-width: 820px), (max-aspect-ratio: 1/1)";
+const DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR = 1.5;
+const mobilePlayerLayoutMql =
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(MOBILE_PLAYER_LAYOUT_QUERY)
+    : null;
+
+function isMobilePlayerLayout() {
+  return !!mobilePlayerLayoutMql?.matches;
+}
+
+function cloneOrbitView(v) {
+  if (!v) return null;
+  return {
+    camPos: v.camPos.clone(),
+    camQuat: v.camQuat.clone(),
+    target: v.target.clone(),
+    zoom: v.zoom ?? 1,
+  };
+}
+
+function getViewportAdjustedDollOrbitView(v) {
+  if (!v) return null;
+  if (!isMobilePlayerLayout()) return v;
+
+  const adjusted = cloneOrbitView(v);
+  const offset = adjusted.camPos.clone().sub(adjusted.target);
+  if (offset.lengthSq() <= 1e-9) return adjusted;
+
+  adjusted.camPos.copy(
+    adjusted.target.clone().add(offset.multiplyScalar(DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR))
+  );
+  return adjusted;
+}
 
 function serializeOrbitView(v) {
   return {
@@ -3202,8 +3236,11 @@ function shouldUseFullPanoEntryViewForIndex(i) {
   return defaultDollEntryViewFullFromPanoNodes.has(seqNode);
 }
 function getDefaultDollViewForKey(key = activeDollKey) {
-  if (key === "full" && defaultDollViewFull) return defaultDollViewFull;
-  return defaultDollView;
+  const view = key === "full" && defaultDollViewFull ? defaultDollViewFull : defaultDollView;
+  return getViewportAdjustedDollOrbitView(view);
+}
+function getFullPanoEntryDollView() {
+  return getViewportAdjustedDollOrbitView(defaultDollEntryViewFullFromPano);
 }
 function logDollDefaultViewTourJsonSnippet(key, view) {
   if (!view) return;
@@ -3488,7 +3525,7 @@ async function resetDollhouseFromCurrentPano(
   }
   const targetDefaultView =
     activeDollKey === "full" && shouldUseFullPanoEntryViewForIndex(state.index)
-      ? defaultDollEntryViewFullFromPano
+      ? getFullPanoEntryDollView()
       : getDefaultDollViewForKey(activeDollKey);
   if (!targetDefaultView) return;
 
@@ -4319,7 +4356,7 @@ async function switchDollhouseModel(key) {
     ((prevKey === "full" && key !== "full") || (prevKey !== "full" && key === "full"));
   const targetView =
     key === "full" && shouldUseFullPanoEntryViewForIndex(state.index)
-      ? defaultDollEntryViewFullFromPano
+      ? getFullPanoEntryDollView()
       : getDefaultDollViewForKey(key);
   const view =
     isFullBoundaryTransition && targetView
@@ -4652,8 +4689,11 @@ if (tabDollhouse) {
           await resetPromise;
           applyReferenceClippingAndLimits();
         }
-      } else if (defaultDollView) {
-        applyOrbitViewWithLockedPivot(defaultDollView);
+      } else {
+        const defaultEntryView = getDefaultDollViewForKey(activeDollKey);
+        if (defaultEntryView) {
+          applyOrbitViewWithLockedPivot(defaultEntryView);
+        }
         applyReferenceClippingAndLimits();
       }
 

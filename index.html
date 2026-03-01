@@ -33,6 +33,7 @@
         --chrome-depth-shadow: rgba(10, 14, 24, 0.46);
         --container-stroke-width: 3px;
         --ui-responsive-scale: 1;
+        --desktop-primary-ui-scale: 0.85;
 
         /* NAV COLORS */
         --nav-bg: #ffffff;
@@ -240,13 +241,13 @@
         position: absolute;
         left: calc(14px * var(--ui-responsive-scale));
         top: calc(14px * var(--ui-responsive-scale));
-        width: calc(var(--view-tabs-width) * var(--ui-responsive-scale));
+        width: calc(var(--view-tabs-width) * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
         display: inline-flex;
         align-items: flex-start;
-        gap: calc(10px * var(--ui-responsive-scale));
-        padding: calc(10px * var(--ui-responsive-scale));
+        gap: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        padding: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 16px;
         background: rgba(0, 0, 0, 0.38);
         backdrop-filter: blur(10px);
@@ -264,13 +265,13 @@
         position: absolute;
         left: calc(14px * var(--ui-responsive-scale));
         top: calc(110px * var(--ui-responsive-scale));
-        width: calc(var(--view-tabs-width) * var(--ui-responsive-scale));
+        width: calc(var(--view-tabs-width) * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: calc(10px * var(--ui-responsive-scale));
+        gap: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
       }
 
       #pano360Control.hidden {
@@ -281,12 +282,12 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        height: calc(29px * var(--ui-responsive-scale));
-        padding: 0 calc(18px * var(--ui-responsive-scale));
+        height: calc(29px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        padding: 0 calc(18px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 14px;
         background: var(--midnight-purple);
         color: rgba(255, 255, 255, 0.98);
-        font-size: calc(14px * var(--ui-responsive-scale));
+        font-size: calc(14px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: none;
@@ -295,8 +296,8 @@
 
       #pano360Switch {
         position: relative;
-        width: calc(118px * var(--ui-responsive-scale));
-        height: calc(42px * var(--ui-responsive-scale));
+        width: calc(118px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        height: calc(42px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border: 0;
         border-radius: 999px;
         padding: 0;
@@ -305,7 +306,7 @@
         justify-content: center;
         cursor: pointer;
         color: #ffffff;
-        font-size: calc(11px * var(--ui-responsive-scale));
+        font-size: calc(11px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -342,10 +343,10 @@
 
       #pano360Switch .switchKnob {
         position: absolute;
-        left: calc(4px * var(--ui-responsive-scale));
-        top: calc(4px * var(--ui-responsive-scale));
-        width: calc(50px * var(--ui-responsive-scale));
-        height: calc(34px * var(--ui-responsive-scale));
+        left: calc(4px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        top: calc(4px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        width: calc(50px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        height: calc(34px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 999px;
         border: 1px solid rgba(165, 176, 195, 0.95);
         background:
@@ -358,7 +359,7 @@
       }
 
       #pano360Switch.isOn .switchKnob {
-        transform: translateX(calc(60px * var(--ui-responsive-scale)));
+        transform: translateX(calc(60px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale)));
       }
 
       #pano360Switch:not(.isOn) .offText {
@@ -375,11 +376,11 @@
       }
 
       .tabBtn {
-        min-width: calc(181px * var(--ui-responsive-scale));
-        height: calc(66px * var(--ui-responsive-scale));
-        padding: 0 calc(23px * var(--ui-responsive-scale));
+        min-width: calc(181px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        height: calc(66px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        padding: 0 calc(23px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 20px;
-        font-size: calc(16.6px * var(--ui-responsive-scale));
+        font-size: calc(16.6px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         justify-content: center;
         text-align: center;
 
@@ -604,11 +605,11 @@
       }
 
       #nav button {
-        height: calc(87px * var(--ui-responsive-scale));
-        padding: 0 calc(33px * var(--ui-responsive-scale));
-        font-size: calc(21px * var(--ui-responsive-scale));
+        height: calc(87px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        padding: 0 calc(33px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        font-size: calc(21px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         letter-spacing: 0.14em;
-        min-width: calc(180px * var(--ui-responsive-scale));
+        min-width: calc(180px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
 
         --btn-bg: var(--tab-active-bg);
         --btn-text: rgba(255, 255, 255, 0.98);
@@ -900,6 +901,7 @@
         :root {
           /* mobile-only tuning */
           --ui-responsive-scale: 0.78;
+          --desktop-primary-ui-scale: 1;
           --view-tabs-width: min(84vw, 360px);
           --ui-safe-bottom: max(12px, env(safe-area-inset-bottom));
         }
