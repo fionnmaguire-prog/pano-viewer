@@ -900,7 +900,7 @@
         :root {
           /* mobile-only tuning */
           --ui-responsive-scale: 0.78;
-          --view-tabs-width: min(92vw, 420px);
+          --view-tabs-width: min(84vw, 360px);
           --ui-safe-bottom: max(12px, env(safe-area-inset-bottom));
         }
 
@@ -917,75 +917,126 @@
           overflow: hidden;
         }
 
+        #startOverlay {
+          display: grid;
+          place-items: center;
+          justify-items: center;
+        }
+
+        #startCard {
+          justify-self: center;
+          margin-inline: auto;
+          width: max-content;
+          max-width: calc(100vw - 24px);
+        }
+
         /* TOP: tabs become centered and responsive */
         #tabs {
-          left: 50%;
-          right: auto;
+          left: 0;
+          right: 0;
           top: max(10px, env(safe-area-inset-top));
-          transform: translateX(-50%);
+          transform: none;
+          margin-inline: auto;
           width: var(--view-tabs-width);
-          max-width: 92vw;
-          justify-content: space-between;
-          gap: 10px;
+          max-width: 84vw;
+          justify-content: stretch;
+          align-items: stretch;
+          gap: 8px;
+          padding: 8px;
+        }
+
+        #tabs > * {
+          flex: 1 1 0;
+          min-width: 0;
+        }
+
+        #interiorStack {
+          flex: 1 1 0;
+          min-width: 0;
+          width: 100%;
         }
 
         /* allow tabs to shrink and not overflow */
         .tabBtn {
           min-width: 0 !important;
           flex: 1 1 0;
+          width: 100%;
           height: auto;
-          padding: 14px 12px;
-          font-size: 14px;
-          border-radius: 18px;
+          padding: 12px 10px;
+          font-size: 12.6px;
+          border-radius: 16px;
           letter-spacing: 0.10em;
         }
 
         /* 360 control: center under tabs */
         #pano360Control {
-          left: 50%;
-          top: calc(max(10px, env(safe-area-inset-top)) + 96px);
-          transform: translateX(-50%);
-          width: var(--view-tabs-width);
-          max-width: 92vw;
-          justify-content: space-between;
-          gap: 10px;
+          left: 0;
+          right: 0;
+          top: calc(max(10px, env(safe-area-inset-top)) + 82px);
+          transform: none;
+          margin-inline: auto;
+          width: min(78vw, 310px);
+          max-width: 78vw;
+          justify-content: center;
+          align-items: center;
+          gap: 8px;
         }
 
         #pano360Label {
-          font-size: 13px;
-          padding: 0 12px;
-          height: 28px;
-          border-radius: 14px;
+          font-size: 10.4px;
+          padding: 0 10px;
+          height: 22px;
+          border-radius: 11px;
           white-space: nowrap;
         }
 
         #pano360Switch {
-          width: 116px;
-          height: 40px;
-          font-size: 11px;
+          width: 94px;
+          height: 34px;
+          font-size: 10px;
+        }
+
+        #pano360Switch .offText,
+        #pano360Switch .onText {
+          top: 0;
+          bottom: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transform: none;
+        }
+
+        #pano360Switch .switchKnob {
+          left: 3px;
+          top: 50%;
+          width: 40px;
+          height: 28px;
+          transform: translateY(-50%);
+        }
+
+        #pano360Switch.isOn .switchKnob {
+          transform: translate(48px, -50%);
         }
 
         /* Brand link: keep it from colliding */
         #brandLink {
-          top: max(10px, env(safe-area-inset-top));
-          right: max(10px, env(safe-area-inset-right));
-          padding: 10px 12px;
-          font-size: 12px;
-          gap: 8px;
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
-        /* on mobile we prefer logo-only to reduce clutter */
-        #brandText { display: none !important; }
 
         /* DOLL buttons: move to centered row ABOVE nav so it can't collide */
         #dollBtns {
-          left: 50%;
-          right: auto;
-          bottom: calc(var(--ui-safe-bottom) + 92px);
-          transform: translateX(-50%);
-          max-width: 92vw;
+          left: 0;
+          right: 0;
+          bottom: calc(var(--ui-safe-bottom) + 66px);
+          transform: none;
+          margin-inline: auto;
+          width: min(84vw, 360px);
+          max-width: 84vw;
           justify-content: center;
-          gap: 10px;
-          padding: 10px;
+          gap: 8px;
+          padding: 8px;
         }
 
         .dollBtn {
@@ -993,33 +1044,55 @@
           width: auto;
           flex: 1 1 0;
           height: auto;
-          padding: 14px 12px;
-          font-size: 14px;
-          border-radius: 18px;
+          padding: 12px 10px;
+          font-size: 13px;
+          border-radius: 16px;
           letter-spacing: 0.10em;
         }
 
-        /* Indicator: keep centered and above nav */
         #indicator {
-          bottom: calc(var(--ui-safe-bottom) + 152px);
-          font-size: 14px;
-          padding: 8px 12px;
-          max-width: 92vw;
-          text-align: center;
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
         }
 
-        /* Enter home: also above nav */
+        #roomLabel {
+          left: 50% !important;
+          right: auto !important;
+          bottom: calc(var(--ui-safe-bottom) + 72px) !important;
+          transform: translateX(-50%) !important;
+          width: max-content !important;
+          max-width: calc(100vw - 24px) !important;
+          padding: calc(10.8px * var(--ui-responsive-scale)) calc(14.4px * var(--ui-responsive-scale)) !important;
+          border-radius: calc(10.8px * var(--ui-responsive-scale)) !important;
+          font-size: calc(13.5px * var(--ui-responsive-scale)) !important;
+          text-align: center !important;
+        }
+
         #enterHomeWrap {
-          bottom: calc(var(--ui-safe-bottom) + 120px);
+          left: 50%;
+          right: auto;
+          bottom: calc(var(--ui-safe-bottom) + 2px);
+          transform: translateX(-50%);
+          width: max-content;
+          max-width: calc(100vw - 24px);
+          margin-inline: auto;
+        }
+
+        #startBtn,
+        #enterHomeBtn {
+          display: block;
+          margin-inline: auto;
         }
 
         /* NAV: center it, make buttons equal width, remove large min-width */
         #navWrap {
-          left: 50%;
-          right: auto;
+          left: 0;
+          right: 0;
           bottom: var(--ui-safe-bottom);
-          transform: translateX(-50%);
-          width: min(92vw, 520px);
+          transform: none;
+          margin-inline: auto;
+          width: min(82vw, 420px);
           justify-content: center;
         }
 
@@ -1027,17 +1100,17 @@
           width: 100%;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 12px;
+          gap: 10px;
         }
 
         #nav button {
           min-width: 0 !important;          /* critical: remove desktop min width */
           width: 100%;
-          height: 64px;                      /* stable tap target */
-          padding: 0 14px;
-          font-size: 16px;
-          letter-spacing: 0.12em;
-          border-radius: 18px;
+          height: 54px;                      /* stable tap target */
+          padding: 0 12px;
+          font-size: 13.6px;
+          letter-spacing: 0.10em;
+          border-radius: 16px;
         }
       }
     </style>
