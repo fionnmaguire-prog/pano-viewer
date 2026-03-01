@@ -22,6 +22,7 @@ const backBtn = document.getElementById("backBtn");
 const forwardBtn = document.getElementById("forwardBtn");
 const enterHomeWrap = document.getElementById("enterHomeWrap");
 const enterHomeBtn = document.getElementById("enterHomeBtn");
+const dollhouseHint = document.getElementById("dollhouseHint");
 // Brand link UI
 const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
@@ -1643,6 +1644,7 @@ function setMode(which) {
   mode = which;
   if (which !== "pano360") cancelPano360Blur();
   emitListingViewModeChange(which, "setMode");
+  if (which !== "dollhouse") hideDollhouseHint();
 
   // ✅ invalidate any pending UI reveals from the previous mode
   __uiEpoch++;
@@ -3151,13 +3153,25 @@ const DOLL_WIPE_SWITCH_MS = 1440;
 const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
 const MOBILE_PLAYER_LAYOUT_QUERY = "(max-width: 820px), (max-aspect-ratio: 1/1)";
 const DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR = 1.5;
+const DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR = 1.15;
+const DOLLHOUSE_HINT_DELAY_MS = 1000;
+const DOLLHOUSE_HINT_VISIBLE_MS = 3000;
 const mobilePlayerLayoutMql =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia(MOBILE_PLAYER_LAYOUT_QUERY)
     : null;
+let dollhouseHintShowTimer = null;
+let dollhouseHintHideTimer = null;
+let dollhouseHintToken = 0;
 
 function isMobilePlayerLayout() {
   return !!mobilePlayerLayoutMql?.matches;
+}
+
+function getDollOrbitDistanceMultiplier(key = activeDollKey) {
+  if (isMobilePlayerLayout()) return DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR;
+  if (key === "full") return DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR;
+  return 1;
 }
 
 function cloneOrbitView(v) {
@@ -3170,18 +3184,56 @@ function cloneOrbitView(v) {
   };
 }
 
-function getViewportAdjustedDollOrbitView(v) {
+function getViewportAdjustedDollOrbitView(v, key = activeDollKey) {
   if (!v) return null;
-  if (!isMobilePlayerLayout()) return v;
+  const distanceMultiplier = getDollOrbitDistanceMultiplier(key);
+  if (Math.abs(distanceMultiplier - 1) < 1e-6) return v;
 
   const adjusted = cloneOrbitView(v);
   const offset = adjusted.camPos.clone().sub(adjusted.target);
   if (offset.lengthSq() <= 1e-9) return adjusted;
 
-  adjusted.camPos.copy(
-    adjusted.target.clone().add(offset.multiplyScalar(DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR))
-  );
+  adjusted.camPos.copy(adjusted.target.clone().add(offset.multiplyScalar(distanceMultiplier)));
   return adjusted;
+}
+
+function clearDollhouseHintTimers() {
+  if (dollhouseHintShowTimer) {
+    clearTimeout(dollhouseHintShowTimer);
+    dollhouseHintShowTimer = null;
+  }
+  if (dollhouseHintHideTimer) {
+    clearTimeout(dollhouseHintHideTimer);
+    dollhouseHintHideTimer = null;
+  }
+}
+
+function hideDollhouseHint() {
+  dollhouseHintToken++;
+  clearDollhouseHintTimers();
+  if (!dollhouseHint) return;
+  dollhouseHint.classList.remove("visible");
+}
+
+function scheduleDollhouseHint() {
+  if (!dollhouseHint) return;
+
+  const token = ++dollhouseHintToken;
+  clearDollhouseHintTimers();
+  dollhouseHint.classList.remove("visible");
+
+  dollhouseHintShowTimer = setTimeout(() => {
+    dollhouseHintShowTimer = null;
+    if (token !== dollhouseHintToken) return;
+    if (mode !== "dollhouse") return;
+
+    dollhouseHint.classList.add("visible");
+    dollhouseHintHideTimer = setTimeout(() => {
+      dollhouseHintHideTimer = null;
+      if (token !== dollhouseHintToken) return;
+      dollhouseHint.classList.remove("visible");
+    }, DOLLHOUSE_HINT_VISIBLE_MS);
+  }, DOLLHOUSE_HINT_DELAY_MS);
 }
 
 function serializeOrbitView(v) {
@@ -3237,10 +3289,10 @@ function shouldUseFullPanoEntryViewForIndex(i) {
 }
 function getDefaultDollViewForKey(key = activeDollKey) {
   const view = key === "full" && defaultDollViewFull ? defaultDollViewFull : defaultDollView;
-  return getViewportAdjustedDollOrbitView(view);
+  return getViewportAdjustedDollOrbitView(view, key);
 }
 function getFullPanoEntryDollView() {
-  return getViewportAdjustedDollOrbitView(defaultDollEntryViewFullFromPano);
+  return getViewportAdjustedDollOrbitView(defaultDollEntryViewFullFromPano, "full");
 }
 function logDollDefaultViewTourJsonSnippet(key, view) {
   if (!view) return;
@@ -4715,6 +4767,7 @@ if (tabDollhouse) {
 
 // Reveal dollhouse UI only after the model is visible
 revealDollUIWhenReady();
+      scheduleDollhouseHint();
 
       // 12) Finish loader (if it wasn't already finished in the first-entry safety net)
       if (pm) {
