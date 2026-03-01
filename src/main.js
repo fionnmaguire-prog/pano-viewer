@@ -3154,9 +3154,9 @@ const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
 const MOBILE_PLAYER_LAYOUT_QUERY = "(max-width: 820px), (max-aspect-ratio: 1/1)";
 const DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR = 1.5;
 const DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR = 1.15;
-const DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX = 36;
+const DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX = 44;
 const DOLLHOUSE_HINT_DELAY_MS = 1000;
-const DOLLHOUSE_HINT_VISIBLE_MS = 3000;
+const DOLLHOUSE_HINT_VISIBLE_MS = 5000;
 const mobilePlayerLayoutMql =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia(MOBILE_PLAYER_LAYOUT_QUERY)
