@@ -1025,11 +1025,11 @@
           pointer-events: none !important;
         }
 
-        /* DOLL buttons: move to centered row ABOVE nav so it can't collide */
+        /* DOLL buttons: align bottom edge with the interior nav row */
         #dollBtns {
           left: 0;
           right: 0;
-          bottom: calc(var(--ui-safe-bottom) + 66px);
+          bottom: var(--ui-safe-bottom);
           transform: none;
           margin-inline: auto;
           width: min(84vw, 360px);
