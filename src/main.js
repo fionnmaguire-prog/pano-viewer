@@ -3154,6 +3154,7 @@ const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
 const MOBILE_PLAYER_LAYOUT_QUERY = "(max-width: 820px), (max-aspect-ratio: 1/1)";
 const DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR = 1.5;
 const DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR = 1.15;
+const DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX = 36;
 const DOLLHOUSE_HINT_DELAY_MS = 1000;
 const DOLLHOUSE_HINT_VISIBLE_MS = 3000;
 const mobilePlayerLayoutMql =
@@ -4178,13 +4179,57 @@ function setActiveDollRoot(root) {
 // -----------------------------
 function raycastNodes(e) {
   const rect = renderer.domElement.getBoundingClientRect();
-  const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-  const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-  mouseNDC.set(x, y);
+  const xPx = e.clientX - rect.left;
+  const yPx = e.clientY - rect.top;
 
-  raycaster.setFromCamera(mouseNDC, dollCamera);
-  const hits = raycaster.intersectObjects(activeNodeMeshes, true);
-  return hits?.[0]?.object || null;
+  const intersectAtPixels = (sampleXPx, sampleYPx) => {
+    const x = (sampleXPx / rect.width) * 2 - 1;
+    const y = -((sampleYPx / rect.height) * 2 - 1);
+    mouseNDC.set(x, y);
+    raycaster.setFromCamera(mouseNDC, dollCamera);
+    return raycaster.intersectObjects(activeNodeMeshes, true);
+  };
+
+  const directHits = intersectAtPixels(xPx, yPx);
+  if (directHits?.length) return directHits[0].object || null;
+
+  if (!isMobilePlayerLayout()) return null;
+
+  const r = DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX;
+  const offsets = [
+    [0, 0],
+    [r, 0],
+    [-r, 0],
+    [0, r],
+    [0, -r],
+    [r * 0.7, r * 0.7],
+    [r * 0.7, -r * 0.7],
+    [-r * 0.7, r * 0.7],
+    [-r * 0.7, -r * 0.7],
+    [r * 1.25, 0],
+    [-r * 1.25, 0],
+    [0, r * 1.25],
+    [0, -r * 1.25],
+  ];
+
+  let bestHit = null;
+  let bestScore = Infinity;
+
+  for (const [dx, dy] of offsets) {
+    const sampleX = Math.max(0, Math.min(rect.width, xPx + dx));
+    const sampleY = Math.max(0, Math.min(rect.height, yPx + dy));
+    const hits = intersectAtPixels(sampleX, sampleY);
+    if (!hits?.length) continue;
+
+    const hit = hits[0];
+    const score = dx * dx + dy * dy + hit.distance * 0.01;
+    if (score < bestScore) {
+      bestScore = score;
+      bestHit = hit.object || null;
+    }
+  }
+
+  return bestHit;
 }
 
 function updateNodeHover(dt) {

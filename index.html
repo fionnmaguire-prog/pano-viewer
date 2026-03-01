@@ -732,14 +732,16 @@
 
       #dollhouseHint {
         position: absolute;
-        left: 50%;
+        left: 0;
+        right: 0;
         top: calc(16px * var(--ui-responsive-scale));
-        transform: translateX(-50%);
+        width: max-content;
+        margin-inline: auto;
         z-index: 24;
         pointer-events: none;
         opacity: 0;
         visibility: hidden;
-        padding: calc(10px * var(--ui-responsive-scale)) calc(16px * var(--ui-responsive-scale));
+        padding: calc(11.5px * var(--ui-responsive-scale)) calc(18.4px * var(--ui-responsive-scale));
         border-radius: 999px;
         border: var(--container-stroke-width) solid transparent;
         background:
@@ -752,7 +754,7 @@
           inset 1px 0 0 var(--chrome-specular-edge),
           0 10px 18px rgba(10, 14, 24, 0.35);
         color: rgba(255, 255, 255, 0.96);
-        font-size: calc(15px * var(--ui-responsive-scale));
+        font-size: calc(17.25px * var(--ui-responsive-scale));
         font-weight: 800;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -1115,9 +1117,13 @@
         #dollhouseHint {
           top: auto;
           bottom: calc(var(--ui-safe-bottom) + 64px);
+          left: 0;
+          right: 0;
+          width: max-content;
           max-width: calc(100vw - 24px);
-          padding: calc(8px * var(--ui-responsive-scale)) calc(12px * var(--ui-responsive-scale));
-          font-size: calc(11.5px * var(--ui-responsive-scale));
+          margin-inline: auto;
+          padding: calc(16px * var(--ui-responsive-scale)) calc(24px * var(--ui-responsive-scale));
+          font-size: calc(23px * var(--ui-responsive-scale));
           white-space: normal;
         }
 
@@ -1218,7 +1224,7 @@
           <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
         </div>
 
-        <div id="dollhouseHint" aria-live="polite">Click Blue Speheres To Enter View</div>
+        <div id="dollhouseHint" aria-live="polite">Click Spheres To View</div>
 
         <div id="startOverlay" aria-label="Begin tour overlay">
           <div id="startCard">
