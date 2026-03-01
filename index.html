@@ -904,14 +904,17 @@
           --ui-safe-bottom: max(12px, env(safe-area-inset-bottom));
         }
 
-        /* give everything a little breathing room + safe areas */
+        /* keep the iframe root neutral so the parent embed can own rounded corners */
         #playerShell {
-          padding:
-            max(10px, env(safe-area-inset-top))
-            max(10px, env(safe-area-inset-right))
-            max(10px, env(safe-area-inset-bottom))
-            max(10px, env(safe-area-inset-left));
+          padding: 0;
           box-sizing: border-box;
+          background: transparent;
+        }
+
+        #playerStage,
+        #app {
+          background: transparent;
+          overflow: hidden;
         }
 
         /* TOP: tabs become centered and responsive */
