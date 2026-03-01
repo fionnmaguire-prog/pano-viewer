@@ -972,7 +972,7 @@
         #pano360Control {
           left: 0;
           right: 0;
-          top: calc(max(10px, env(safe-area-inset-top)) + 82px);
+          top: calc(max(10px, env(safe-area-inset-top)) + 72px);
           transform: none;
           margin-inline: auto;
           width: min(78vw, 310px);
@@ -983,17 +983,17 @@
         }
 
         #pano360Label {
-          font-size: 10.4px;
-          padding: 0 10px;
-          height: 22px;
-          border-radius: 11px;
+          font-size: 8.84px;
+          padding: 0 8.5px;
+          height: 18.7px;
+          border-radius: 9.35px;
           white-space: nowrap;
         }
 
         #pano360Switch {
-          width: 94px;
-          height: 34px;
-          font-size: 10px;
+          width: 79.9px;
+          height: 28.9px;
+          font-size: 8.5px;
         }
 
         #pano360Switch .offText,
@@ -1009,13 +1009,13 @@
         #pano360Switch .switchKnob {
           left: 3px;
           top: 50%;
-          width: 40px;
-          height: 28px;
+          width: 34px;
+          height: 23.8px;
           transform: translateY(-50%);
         }
 
         #pano360Switch.isOn .switchKnob {
-          transform: translate(48px, -50%);
+          transform: translate(40.8px, -50%);
         }
 
         /* Brand link: keep it from colliding */
@@ -1063,9 +1063,9 @@
           transform: translateX(-50%) !important;
           width: max-content !important;
           max-width: calc(100vw - 24px) !important;
-          padding: calc(10.8px * var(--ui-responsive-scale)) calc(14.4px * var(--ui-responsive-scale)) !important;
-          border-radius: calc(10.8px * var(--ui-responsive-scale)) !important;
-          font-size: calc(13.5px * var(--ui-responsive-scale)) !important;
+          padding: calc(9.18px * var(--ui-responsive-scale)) calc(12.24px * var(--ui-responsive-scale)) !important;
+          border-radius: calc(9.18px * var(--ui-responsive-scale)) !important;
+          font-size: calc(11.475px * var(--ui-responsive-scale)) !important;
           text-align: center !important;
         }
 
@@ -1111,6 +1111,19 @@
           font-size: 13.6px;
           letter-spacing: 0.10em;
           border-radius: 16px;
+        }
+
+        #nav button:hover:not(:disabled):not(.active),
+        #nav button:active:not(:disabled):not(.active) {
+          background:
+            linear-gradient(var(--tab-active-bg), var(--tab-active-bg)) padding-box,
+            var(--chrome-stroke-material) border-box;
+          background-clip: padding-box, border-box;
+          color: rgba(255, 255, 255, 0.98);
+          transform: none;
+          box-shadow:
+            0 12px 28px rgba(0,0,0,0.38),
+            inset 0 1px 0 rgba(255,255,255,0.10);
         }
       }
     </style>
