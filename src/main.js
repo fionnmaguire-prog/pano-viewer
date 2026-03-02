@@ -3278,29 +3278,10 @@ function isMobilePlayerLayout() {
 }
 
 function layoutDollhouseHint() {
-  if (!dollhouseHint || !container) return;
-
-  if (!dollhouseHint.classList.contains("visible")) {
-    dollhouseHint.style.left = "";
-    dollhouseHint.style.right = "";
-    dollhouseHint.style.transform = "";
-    return;
-  }
-
-  if (isMobilePlayerLayout()) {
-    dollhouseHint.style.left = "50%";
-    dollhouseHint.style.right = "auto";
-    dollhouseHint.style.transform = "translateX(-50%)";
-    return;
-  }
-
-  const containerWidth = container.clientWidth || 0;
-  const hintWidth = dollhouseHint.offsetWidth || 0;
-  const leftPx = Math.max(0, Math.round((containerWidth - hintWidth) * 0.5));
-
-  dollhouseHint.style.left = `${leftPx}px`;
-  dollhouseHint.style.right = "auto";
-  dollhouseHint.style.transform = "none";
+  if (!dollhouseHint) return;
+  dollhouseHint.style.left = "";
+  dollhouseHint.style.right = "";
+  dollhouseHint.style.transform = "";
 }
 
 function getDollOrbitDistanceMultiplier(key = activeDollKey) {

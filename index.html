@@ -247,7 +247,7 @@
         box-sizing: border-box;
         z-index: 20;
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1.03fr) minmax(0, 1fr);
         align-items: stretch;
         justify-items: stretch;
         gap: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
@@ -761,17 +761,26 @@
 
       #dollhouseHint {
         position: absolute;
-        left: 50%;
+        left: 0;
+        right: 0;
         top: calc(16px * var(--ui-responsive-scale));
-        transform: translateX(-50%);
-        display: inline-flex;
-        align-items: center;
+        display: flex;
+        align-items: flex-start;
         justify-content: center;
-        width: auto;
+        width: 100%;
         z-index: 24;
         pointer-events: none;
         opacity: 0;
         visibility: hidden;
+        padding: 0 calc(24px * var(--ui-responsive-scale));
+        box-sizing: border-box;
+        transition: opacity 220ms ease, visibility 220ms ease;
+      }
+
+      #dollhouseHintText {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         padding: calc(11.5px * var(--ui-responsive-scale)) calc(18.4px * var(--ui-responsive-scale));
         border-radius: 999px;
         border: var(--container-stroke-width) solid transparent;
@@ -791,9 +800,8 @@
         text-transform: uppercase;
         text-align: center;
         white-space: nowrap;
-        max-width: calc(100% - 48px);
+        max-width: 100%;
         box-sizing: border-box;
-        transition: opacity 220ms ease, visibility 220ms ease;
       }
 
       #dollhouseHint.visible {
@@ -1021,6 +1029,7 @@
           margin-inline: auto;
           width: var(--view-tabs-width);
           max-width: 75.6vw;
+          grid-template-columns: minmax(0, 1.03fr) minmax(0, 1fr);
           justify-content: stretch;
           align-items: stretch;
           gap: 7px;
@@ -1154,10 +1163,15 @@
         #dollhouseHint {
           top: auto;
           bottom: calc(var(--ui-safe-bottom) + 64px);
-          left: 50%;
-          transform: translateX(-50%);
-          width: auto;
-          max-width: calc(100vw - 24px);
+          left: 0;
+          right: 0;
+          transform: none;
+          width: 100%;
+          max-width: none;
+          padding: 0 12px;
+        }
+
+        #dollhouseHintText {
           padding: calc(16px * var(--ui-responsive-scale)) calc(24px * var(--ui-responsive-scale));
           font-size: calc(23px * var(--ui-responsive-scale));
           white-space: normal;
@@ -1271,7 +1285,9 @@
           <button id="btnDown" class="uiBtn dollBtn hasStroke" type="button">DOWN</button>
         </div>
 
-        <div id="dollhouseHint" aria-live="polite">Click Spheres To View</div>
+        <div id="dollhouseHint" aria-live="polite">
+          <div id="dollhouseHintText">Click Spheres To View</div>
+        </div>
 
         <div id="startOverlay" aria-label="Begin tour overlay">
           <div id="startCard">
