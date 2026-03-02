@@ -23,6 +23,7 @@ const forwardBtn = document.getElementById("forwardBtn");
 const enterHomeWrap = document.getElementById("enterHomeWrap");
 const enterHomeBtn = document.getElementById("enterHomeBtn");
 const dollhouseHint = document.getElementById("dollhouseHint");
+const tabsEl = document.getElementById("tabs");
 // Brand link UI
 const brandLink = document.getElementById("brandLink");
 const brandLogo = document.getElementById("brandLogo");
@@ -197,9 +198,11 @@ const pano360Switch = document.getElementById("pano360Switch");
 const UI_FADE_DELAY_MS = 140; // small delay after content is visible
 const UI_FADE_DELAY_DOLL_MS = 100; // slightly faster reveal for FULL/UP/DOWN
 const UI_FADE_MS = 180;       // fade duration
+const FIRST_PANO_UI_REVEAL_DELAY_MS = 360;
 
 const __uiTimers = new WeakMap();
 let __uiEpoch = 0; // increments on every mode switch
+let hasCompletedInitialPanoUIReveal = false;
 
 function __afterNextPaint(fn) {
   requestAnimationFrame(() => requestAnimationFrame(fn));
@@ -258,12 +261,15 @@ function uiShowGroupAfter(els, opts) {
   for (const el of els) uiShowAfter(el, opts);
 }
 
-function revealPanoUIWhenReady() {
+function revealPanoUIWhenReady(
+  { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS, markInitialRevealReady = false } = {}
+) {
   const epochAtCall = __uiEpoch;
 
   __afterNextPaint(() => {
     if (epochAtCall !== __uiEpoch) return;
     if (!isPanoLikeMode()) return;
+    if (markInitialRevealReady) hasCompletedInitialPanoUIReveal = true;
     const showEnterHome = shouldShowEnterHomeCTA();
 
     if (showEnterHome) {
@@ -273,16 +279,40 @@ function revealPanoUIWhenReady() {
         indicator.style.opacity = "0";
         indicator.style.pointerEvents = "none";
       }
-      uiShowAfter(enterHomeWrap, { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+      uiShowAfter(enterHomeWrap, { delayMs, fadeMs });
       return;
     }
 
     uiHide(enterHomeWrap, { fadeMs: 0 });
-    uiShowGroupAfter([navWrap].filter(Boolean), { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS });
+    uiShowGroupAfter([navWrap].filter(Boolean), { delayMs, fadeMs });
 
     if (indicator) {
       indicator.style.display = "block";
-      uiShowAfter(indicator, { delayMs: UI_FADE_DELAY_MS, fadeMs: UI_FADE_MS, display: "block" });
+      uiShowAfter(indicator, { delayMs, fadeMs, display: "block" });
+    }
+  });
+}
+
+function revealPrimaryModeChromeWhenReady(
+  { delayMs = UI_FADE_DELAY_MS, fadeMs = UI_FADE_MS } = {}
+) {
+  const epochAtCall = __uiEpoch;
+
+  __afterNextPaint(() => {
+    if (epochAtCall !== __uiEpoch) return;
+    if (!isPanoLikeMode()) return;
+
+    if (tabsEl) {
+      uiShowAfter(tabsEl, { delayMs, fadeMs, display: "inline-flex" });
+    }
+
+    const shouldShowPano360 = PHOTO360.length > 0 && mode !== "dollhouse";
+    if (shouldShowPano360 && pano360Control) {
+      uiShowAfter(pano360Control, {
+        delayMs: delayMs + 40,
+        fadeMs,
+        display: "inline-flex",
+      });
     }
   });
 }
@@ -555,13 +585,19 @@ function emitListingNodeChange(panoIndex, source = "") {
   } catch {}
 
   const nodeId = getNodeIdForIndex(idx);
+  const sequenceNode = getSequenceNodeNumberForIndex(idx);
+  const sequenceNodePadded = pad2(sequenceNode);
 
   const msg = {
     type: "RTF_NODE_CHANGE",
     tourId: getTourId(),
 
     panoIndex: idx,     // 0-based index
-    nodeId,             // 1-based unique id (panoIndex + 1)
+    nodeId,             // legacy 1-based unique id (panoIndex + 1)
+    legacyNodeId: nodeId,
+    sequenceNode,       // actual tour node number, respects sequenceIndexBase
+    sequenceNodePadded, // e.g. "00", "01", "24"
+    nodeKey: sequenceNodePadded,
     roomName,           // whatever is in TOUR.rooms for this pano
 
     mode: mode === "pano360" ? "pano" : mode, // keep parent bridge backwards-compatible
@@ -1559,6 +1595,17 @@ function shouldShowEnterHomeCTA(which = mode, index = state?.index ?? 0) {
 function refreshPanoNavPresentationForCurrentNode() {
   if (!isPanoLikeMode()) {
     uiHide(enterHomeWrap, { fadeMs: 0 });
+    return;
+  }
+
+  if (!hasCompletedInitialPanoUIReveal) {
+    uiHide(enterHomeWrap, { fadeMs: 0 });
+    uiHide(navWrap, { fadeMs: 0 });
+    if (indicator) {
+      indicator.style.display = "none";
+      indicator.style.opacity = "0";
+      indicator.style.pointerEvents = "none";
+    }
     return;
   }
 
@@ -4968,6 +5015,7 @@ if (playerShell) {
 // Init
 // -----------------------------
 async function init() {
+  hasCompletedInitialPanoUIReveal = false;
   setUIEnabled(false);
   setMode("pano");
   showStartOverlay();
@@ -4975,8 +5023,19 @@ async function init() {
   setUIEnabled(false);
   if (navWrap) navWrap.classList.add("hidden");
   if (dollBtns) dollBtns.classList.add("hidden");
+  if (tabsEl) {
+    tabsEl.classList.add("hidden");
+    tabsEl.style.display = "none";
+    tabsEl.style.opacity = "0";
+    tabsEl.style.pointerEvents = "none";
+  }
   if (tabPano) tabPano.style.display = "none";
-  if (pano360Control) pano360Control.classList.add("hidden");
+  if (pano360Control) {
+    pano360Control.classList.add("hidden");
+    pano360Control.style.display = "none";
+    pano360Control.style.opacity = "0";
+    pano360Control.style.pointerEvents = "none";
+  }
   if (tabDollhouse) tabDollhouse.style.display = "none";
   hideBrandUIHard();
 
@@ -5235,8 +5294,6 @@ async function init() {
         applyYawPitch();
 
         setUIEnabled(true);
-        // Fade pano UI in only after the first pano is actually visible.
-        revealPanoUIWhenReady();
 
         if (playedTourStart) {
           sphereMat.opacity = 1;
@@ -5248,19 +5305,32 @@ async function init() {
           hideStartOverlay();
         }
 
-        // Reveal tour UI only AFTER intro video completes.
+        // Reveal tour UI only AFTER the first pano is actually visible.
         if (tabPano) tabPano.style.display = "";
-        refreshPano360ControlVisibility();
         if (tabDollhouse) tabDollhouse.style.display = "";
-        // Now that the intro is finished, allow the brand UI to appear (no flicker).
-        showBrandUIHard();
-        // Start the 10s logo -> text swap only after the brand UI is visible.
-        startBrandSwapTimer(10000);
-        // One more guard to ensure no 1-frame flash during the overlay removal.
-        __afterNextPaint(() => {
+        refreshPano360ControlVisibility();
+
+        const introRevealEpoch = __uiEpoch;
+        setTimeout(() => {
+          if (introRevealEpoch !== __uiEpoch) return;
+          if (!isPanoLikeMode()) return;
+
+          revealPrimaryModeChromeWhenReady({
+            delayMs: 0,
+            fadeMs: UI_FADE_MS,
+          });
+          revealPanoUIWhenReady({
+            delayMs: 0,
+            fadeMs: UI_FADE_MS,
+            markInitialRevealReady: true,
+          });
           showBrandUIHard();
           startBrandSwapTimer(10000);
-        });
+
+          if (typeof emitListingNodeChange === "function") {
+            emitListingNodeChange(state.index, "first_pano_visible");
+          }
+        }, FIRST_PANO_UI_REVEAL_DELAY_MS);
 
         preloadPromise.then(() => console.log("✅ background preload complete"));
       } catch (e) {
