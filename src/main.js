@@ -2149,6 +2149,7 @@ async function steerCameraDuringVideo({
   startFrac = 0.2,
   endFrac = 1.0,
   requireTransitionState = true,
+  allowUserInterrupt = false,
 }) {
   autoReorienting = true;
   const start = performance.now();
@@ -2160,6 +2161,11 @@ async function steerCameraDuringVideo({
   return new Promise((resolve) => {
     function tick() {
       if (requireTransitionState && !state.isTransitioning) {
+        autoReorienting = false;
+        resolve();
+        return;
+      }
+      if (allowUserInterrupt && transitionVideoUserLookInteracted) {
         autoReorienting = false;
         resolve();
         return;
@@ -2207,19 +2213,33 @@ function boostedDelta(d) {
 }
 function onPointerDown(e) {
   if (!isPanoLikeMode()) return;
-  if (state.isTransitioning || autoReorienting) return;
+  if (state.isTransitioning || autoReorienting) {
+    if (!canInteractDuringTransitionVideo()) return;
+  }
   isPointerDown = true;
   lastX = e.clientX;
   lastY = e.clientY;
 }
 function onPointerMove(e) {
   if (!isPanoLikeMode()) return;
-  if (!isPointerDown || state.isTransitioning || autoReorienting) return;
+  if (!isPointerDown) return;
+
+  const allowTransitionLook = canInteractDuringTransitionVideo();
+  if (!allowTransitionLook && (state.isTransitioning || autoReorienting)) return;
 
   const dx = e.clientX - lastX;
   const dy = e.clientY - lastY;
   lastX = e.clientX;
   lastY = e.clientY;
+
+  if (
+    allowTransitionLook &&
+    !transitionVideoUserLookInteracted &&
+    Math.hypot(dx, dy) >= TRANSITION_VIDEO_USER_DRAG_THRESHOLD_PX
+  ) {
+    transitionVideoUserLookInteracted = true;
+    autoReorienting = false;
+  }
 
   const speed = getRotateSpeed(e);
   yaw -= boostedDelta(dx) * speed;
@@ -2283,6 +2303,18 @@ transitionTex.colorSpace = THREE.SRGBColorSpace;
 transitionTex.minFilter = THREE.LinearFilter;
 transitionTex.magFilter = THREE.LinearFilter;
 transitionTex.generateMipmaps = false;
+const TRANSITION_VIDEO_USER_DRAG_THRESHOLD_PX = 4;
+let transitionVideoUserLookEnabled = false;
+let transitionVideoUserLookInteracted = false;
+
+function resetTransitionVideoUserLookState({ keepInteraction = false } = {}) {
+  transitionVideoUserLookEnabled = false;
+  if (!keepInteraction) transitionVideoUserLookInteracted = false;
+}
+
+function canInteractDuringTransitionVideo() {
+  return mode === "pano" && state.isTransitioning && transitionVideoUserLookEnabled;
+}
 
 function loadVideoSrc(url) {
   return new Promise((resolve, reject) => {
@@ -2355,6 +2387,7 @@ let transitionCancelToken = 0;
 async function cancelActivePanoTransition(reason = "cancel") {
   transitionCancelToken++;
   cancelPano360Blur();
+  resetTransitionVideoUserLookState();
   state.isTransitioning = false;
   autoReorienting = false;
   isPointerDown = false;
@@ -2443,11 +2476,17 @@ async function playTransition(url, heroTargetIndex, targetLookOverride = null) {
   await seekVideo(0);
   if (!stillValid()) return;
 
-  setSphereMap(transitionTex);
-  if (!stillValid()) return;
-
   const targetLook = targetLookOverride || HERO[heroTargetIndex];
-  await playPreparedTransitionVideo(targetLook);
+  return playPreparedTransitionVideo(targetLook, {
+    // Keep the current pano still visible until the transition video has
+    // actually produced its first frame. This prevents stale-frame flashes on
+    // slower mobile video loads.
+    onFirstFrame: async () => {
+      if (!stillValid()) return;
+      setSphereMap(transitionTex);
+    },
+    allowUserLookDuringPlayback: mode === "pano",
+  });
 }
 
 async function playPreparedTransitionVideo(
@@ -2457,11 +2496,14 @@ async function playPreparedTransitionVideo(
     endFrac = 1.0,
     onFirstFrame = null,
     requireTransitionState = true,
+    allowUserLookDuringPlayback = false,
   } = {}
 ) {
   const myToken = transitionCancelToken;
   const stillValid = () =>
     myToken === transitionCancelToken && (mode === "pano" || mode === "pano360");
+
+  resetTransitionVideoUserLookState();
 
   try {
     await transitionVideo.play();
@@ -2476,6 +2518,10 @@ async function playPreparedTransitionVideo(
     try {
       await onFirstFrame();
     } catch {}
+  }
+
+  if (allowUserLookDuringPlayback && stillValid()) {
+    transitionVideoUserLookEnabled = true;
   }
 
   const dur = transitionVideo.duration || 0;
@@ -2494,6 +2540,7 @@ async function playPreparedTransitionVideo(
       startFrac,
       endFrac,
       requireTransitionState,
+      allowUserInterrupt: allowUserLookDuringPlayback,
     });
   }
 
@@ -2534,8 +2581,11 @@ async function playPreparedTransitionVideo(
   } catch {}
 
   await steerPromise;
+  const userLookInteracted = transitionVideoUserLookInteracted;
+  resetTransitionVideoUserLookState({ keepInteraction: true });
   targetYaw = yaw;
   targetPitch = pitch;
+  return { userLookInteracted };
 }
 
 async function playPano360Transition(url, fromIndex, toIndex, nextTex) {
@@ -2688,9 +2738,10 @@ async function goTo(targetIndex) {
     if (!stillValid()) return;
 
     const nextTexPromise = ensurePanoLoaded(to);
+    let transitionResult = null;
 
-    if (to === from + 1) await playTransition(transitionPathForward(from), to);
-    else await playTransition(transitionPathReverse(from), to);
+    if (to === from + 1) transitionResult = await playTransition(transitionPathForward(from), to);
+    else transitionResult = await playTransition(transitionPathReverse(from), to);
 
     if (!stillValid()) return;
 
@@ -2702,7 +2753,8 @@ async function goTo(targetIndex) {
     updateIndicator(state.index);
     preloadNearby(state.index);
 
-    await reorientToHero(to, 150);
+    const userLookInteracted = !!transitionResult?.userLookInteracted;
+    await reorientToHero(to, userLookInteracted ? 150 : 150);
     if (!stillValid()) return;
 
     targetYaw = yaw;
@@ -2726,6 +2778,7 @@ async function goTo(targetIndex) {
     }
   } finally {
     clearTimeout(watchdog);
+    resetTransitionVideoUserLookState();
     if (stillValid()) {
       state.isTransitioning = false;
       autoReorienting = false;
