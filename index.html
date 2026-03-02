@@ -246,8 +246,10 @@
         width: calc(var(--view-tabs-width) * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
-        display: inline-flex;
-        align-items: flex-start;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: stretch;
+        justify-items: stretch;
         gap: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         padding: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 16px;
@@ -257,10 +259,15 @@
         border: 1px solid rgba(255, 255, 255, 0.10);
       }
 
+      #tabs > * {
+        min-width: 0;
+      }
+
       #interiorStack {
-        display: inline-flex;
+        display: block;
         flex-direction: column;
         gap: 0;
+        width: 100%;
       }
 
       #pano360Control {
@@ -378,7 +385,8 @@
       }
 
       .tabBtn {
-        min-width: calc(181px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        min-width: 0;
+        width: 100%;
         height: calc(66px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         padding: 0 calc(23px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
         border-radius: 20px;
@@ -398,8 +406,8 @@
         --btn-stroke: var(--tab-inactive-text);
         --btn-stroke-hover: var(--tab-active-text);
 
-        transform: scale(var(--tab-scale-inactive));
-        transform-origin: left center;
+        transform: none;
+        transform-origin: center;
 
         transition:
           transform 180ms ease,
@@ -410,11 +418,11 @@
 
       /* ✅ Hover only for NON-active tabs */
       .tabBtn:hover:not(.active) {
-        transform: scale(calc(var(--tab-scale-inactive) + 0.02)) translateY(-1px);
+        transform: translateY(-1px);
       }
 
       .tabBtn:active:not(.active) {
-        transform: scale(calc(var(--tab-scale-inactive) + 0.01));
+        transform: translateY(0);
       }
 
       .tabBtn.active {
@@ -427,7 +435,7 @@
           var(--chrome-stroke-material) border-box;
         background-clip: padding-box, border-box;
 
-        transform: scale(var(--tab-scale-active));
+        transform: none;
         box-shadow:
           0 12px 28px rgba(0,0,0,0.38),
           inset 0 1px 0 rgba(255,255,255,0.10);

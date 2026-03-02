@@ -2754,7 +2754,7 @@ async function goTo(targetIndex) {
     preloadNearby(state.index);
 
     const userLookInteracted = !!transitionResult?.userLookInteracted;
-    await reorientToHero(to, userLookInteracted ? 150 : 150);
+    await reorientToHero(to, userLookInteracted ? 700 : 150);
     if (!stillValid()) return;
 
     targetYaw = yaw;
@@ -3277,6 +3277,32 @@ function isMobilePlayerLayout() {
   return !!mobilePlayerLayoutMql?.matches;
 }
 
+function layoutDollhouseHint() {
+  if (!dollhouseHint || !container) return;
+
+  if (!dollhouseHint.classList.contains("visible")) {
+    dollhouseHint.style.left = "";
+    dollhouseHint.style.right = "";
+    dollhouseHint.style.transform = "";
+    return;
+  }
+
+  if (isMobilePlayerLayout()) {
+    dollhouseHint.style.left = "50%";
+    dollhouseHint.style.right = "auto";
+    dollhouseHint.style.transform = "translateX(-50%)";
+    return;
+  }
+
+  const containerWidth = container.clientWidth || 0;
+  const hintWidth = dollhouseHint.offsetWidth || 0;
+  const leftPx = Math.max(0, Math.round((containerWidth - hintWidth) * 0.5));
+
+  dollhouseHint.style.left = `${leftPx}px`;
+  dollhouseHint.style.right = "auto";
+  dollhouseHint.style.transform = "none";
+}
+
 function getDollOrbitDistanceMultiplier(key = activeDollKey) {
   if (isMobilePlayerLayout()) return DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR;
   if (key === "full") return DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR;
@@ -3322,6 +3348,7 @@ function hideDollhouseHint() {
   clearDollhouseHintTimers();
   if (!dollhouseHint) return;
   dollhouseHint.classList.remove("visible");
+  layoutDollhouseHint();
 }
 
 function scheduleDollhouseHint() {
@@ -3337,10 +3364,12 @@ function scheduleDollhouseHint() {
     if (mode !== "dollhouse") return;
 
     dollhouseHint.classList.add("visible");
+    requestAnimationFrame(() => layoutDollhouseHint());
     dollhouseHintHideTimer = setTimeout(() => {
       dollhouseHintHideTimer = null;
       if (token !== dollhouseHintToken) return;
       dollhouseHint.classList.remove("visible");
+      layoutDollhouseHint();
     }, DOLLHOUSE_HINT_VISIBLE_MS);
   }, DOLLHOUSE_HINT_DELAY_MS);
 }
@@ -5064,6 +5093,7 @@ function resizeRenderer() {
 function handleViewportResize() {
   applyPlayerScale();
   resizeRenderer();
+  layoutDollhouseHint();
 }
 window.addEventListener("resize", handleViewportResize);
 if (playerShell) {
