@@ -732,11 +732,13 @@
 
       #dollhouseHint {
         position: absolute;
-        left: 0;
-        right: 0;
+        left: 50%;
         top: calc(16px * var(--ui-responsive-scale));
-        width: max-content;
-        margin-inline: auto;
+        transform: translateX(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
         z-index: 24;
         pointer-events: none;
         opacity: 0;
@@ -760,7 +762,8 @@
         text-transform: uppercase;
         text-align: center;
         white-space: nowrap;
-        max-width: min(72vw, 640px);
+        max-width: calc(100% - 48px);
+        box-sizing: border-box;
         transition: opacity 220ms ease, visibility 220ms ease;
       }
 
@@ -1122,11 +1125,10 @@
         #dollhouseHint {
           top: auto;
           bottom: calc(var(--ui-safe-bottom) + 64px);
-          left: 0;
-          right: 0;
-          width: max-content;
+          left: 50%;
+          transform: translateX(-50%);
+          width: auto;
           max-width: calc(100vw - 24px);
-          margin-inline: auto;
           padding: calc(16px * var(--ui-responsive-scale)) calc(24px * var(--ui-responsive-scale));
           font-size: calc(23px * var(--ui-responsive-scale));
           white-space: normal;

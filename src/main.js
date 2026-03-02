@@ -1788,7 +1788,15 @@ function refreshPano360ControlVisibility() {
   const shouldShow = available && visibleInCurrentMode;
 
   if (pano360Control) {
-    pano360Control.classList.toggle("hidden", !shouldShow);
+    if (shouldShow) {
+      pano360Control.classList.remove("hidden");
+      pano360Control.style.display = "";
+    } else {
+      pano360Control.classList.add("hidden");
+      pano360Control.style.display = "none";
+      pano360Control.style.opacity = "0";
+      pano360Control.style.pointerEvents = "none";
+    }
   }
   if (pano360Switch) {
     pano360Switch.disabled = !shouldShow;
@@ -3832,7 +3840,7 @@ function applyReferenceClippingAndLimits() {
   dollCamera.far = refDistance * 100;
   dollCamera.updateProjectionMatrix();
 
-  orbit.minDistance = refDistance * 0.35;
+  orbit.minDistance = refDistance * 0.245;
   orbit.maxDistance = refDistance * 4.0;
 }
 
