@@ -261,6 +261,7 @@
 
       #tabs > * {
         min-width: 0;
+        inline-size: 100%;
       }
 
       #interiorStack {
@@ -268,6 +269,7 @@
         flex-direction: column;
         gap: 0;
         width: 100%;
+        inline-size: 100%;
       }
 
       #pano360Control {
@@ -384,6 +386,13 @@
         z-index: 2;
       }
 
+      #tabPano,
+      #tabDollhouse {
+        inline-size: 100%;
+        display: grid;
+        place-items: center;
+      }
+
       .tabBtn {
         min-width: 0;
         width: 100%;
@@ -414,6 +423,18 @@
           box-shadow 180ms ease,
           background 140ms ease,
           color 140ms ease;
+      }
+
+      .tabBtnText,
+      .tabBtnSizer {
+        grid-area: 1 / 1;
+        white-space: nowrap;
+      }
+
+      .tabBtnSizer {
+        visibility: hidden;
+        pointer-events: none;
+        user-select: none;
       }
 
       /* ✅ Hover only for NON-active tabs */
@@ -1214,9 +1235,14 @@
         <div id="app">
         <div id="tabs">
           <div id="interiorStack">
-            <button id="tabPano" class="uiBtn tabBtn active" type="button">INTERIOR</button>
+            <button id="tabPano" class="uiBtn tabBtn active" type="button">
+              <span class="tabBtnText">INTERIOR</span>
+              <span class="tabBtnSizer" aria-hidden="true">DOLLHOUSE</span>
+            </button>
           </div>
-          <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">DOLLHOUSE</button>
+          <button id="tabDollhouse" class="uiBtn tabBtn hasStroke" type="button">
+            <span class="tabBtnText">DOLLHOUSE</span>
+          </button>
         </div>
 
         <div id="pano360Control" class="hidden" aria-label="360 camera control">
