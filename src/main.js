@@ -10,6 +10,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import brandLogoUrl from "./assets/rtf-logo.png";
 
+THREE.Cache.enabled = true;
+
 // -----------------------------
 // DOM
 // -----------------------------
@@ -767,12 +769,15 @@ function getTourSequenceIndexBase() {
 async function loadTourConfig() {
   const id = getTourId();
   const API_BASE = getApiBase();
+  const startedAt = performance.now();
 
   TOUR_BASE = `${API_BASE}/tours/${id}/`;
+  ensureTourNetworkHints();
 
   const res = await fetch(`${TOUR_BASE}tour.json`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to load tour.json for tour=${id}`);
   TOUR = await res.json();
+  logPerf("tour", "tour.json", startedAt, `(tour=${id})`);
 }
 // -----------------------------
 // Intro video
@@ -793,6 +798,44 @@ function getTourStartVideoUrl() {
   if (!relPath) return "";
   return `${TOUR_BASE}${relPath.replace(/^\/+/, "")}`;
 }
+const resourceHintKeys = new Set();
+const PERF_LOG_PREFIX = "[PERF]";
+
+function formatPerfDuration(ms) {
+  return `${ms.toFixed(ms >= 100 ? 0 : 1)}ms`;
+}
+
+function logPerf(kind, label, startedAt, extra = "") {
+  const durationMs = performance.now() - startedAt;
+  const suffix = extra ? ` ${extra}` : "";
+  console.info(`${PERF_LOG_PREFIX} ${kind} ${label} ${formatPerfDuration(durationMs)}${suffix}`);
+  return durationMs;
+}
+
+function appendResourceHint(rel, href, { as = "", crossOrigin = false } = {}) {
+  if (!href || !document?.head) return;
+  const key = `${rel}:${as}:${href}`;
+  if (resourceHintKeys.has(key)) return;
+
+  const link = document.createElement("link");
+  link.rel = rel;
+  link.href = href;
+  if (as) link.as = as;
+  if (crossOrigin) link.crossOrigin = "anonymous";
+  document.head.appendChild(link);
+  resourceHintKeys.add(key);
+}
+
+function ensureTourNetworkHints() {
+  if (!TOUR_BASE) return;
+
+  try {
+    const assetOrigin = new URL(TOUR_BASE, window.location.href).origin;
+    appendResourceHint("dns-prefetch", assetOrigin);
+    appendResourceHint("preconnect", assetOrigin, { crossOrigin: assetOrigin !== window.location.origin });
+  } catch {}
+}
+
 function showStartOverlay() {
   if (!startOverlay) return;
   startOverlay.classList.remove("hidden");
@@ -827,6 +870,7 @@ function waitForFirstIntroFrame(videoEl, timeoutMs = 420) {
 
 async function playIntroVideoOnce() {
   if (!introVideoEl) return;
+  const startedAt = performance.now();
 
   if (startOverlay) startOverlay.classList.add("videoMode");
 
@@ -869,10 +913,15 @@ async function playIntroVideoOnce() {
   introVideoEl.pause();
   introVideoEl.classList.remove("show");
   if (startOverlay) startOverlay.classList.remove("videoMode");
+  logPerf("video", "intro playback", startedAt);
 }
 
 function preloadVideoUrl(url) {
-  return new Promise((resolve, reject) => {
+  if (!url) return Promise.resolve(false);
+  if (videoPreloadPromises.has(url)) return videoPreloadPromises.get(url);
+
+  const startedAt = performance.now();
+  const preloadPromise = new Promise((resolve, reject) => {
     if (!url) {
       resolve(false);
       return;
@@ -891,6 +940,7 @@ function preloadVideoUrl(url) {
     };
     const onReady = () => {
       cleanup();
+      logPerf("video", "preload", startedAt, `(${url})`);
       resolve(true);
     };
     const onError = () => {
@@ -903,7 +953,13 @@ function preloadVideoUrl(url) {
     v.addEventListener("error", onError, { once: true });
     v.src = url;
     v.load();
+  }).catch((err) => {
+    videoPreloadPromises.delete(url);
+    throw err;
   });
+
+  videoPreloadPromises.set(url, preloadPromise);
+  return preloadPromise;
 }
 
 async function playTourStartVideoOnce(targetIndex = 0) {
@@ -2262,7 +2318,51 @@ window.addEventListener("pointerup", onPointerUp);
 // Loading helpers (panos)
 // -----------------------------
 const texLoader = new THREE.TextureLoader();
+const NEARBY_PANO_PRELOAD_RADIUS = 2;
+const NEARBY_TRANSITION_PRELOAD_RADIUS = 1;
+const BACKGROUND_PRELOAD_CONCURRENCY = 2;
+const panoLoadPromises = new Map();
+const pano360LoadPromises = new Map();
+const videoPreloadPromises = new Map();
+const dollLoadPromises = new Map();
+const backgroundPreloadKeys = new Set();
+const backgroundPreloadQueue = [];
+let backgroundPreloadActive = 0;
+
+function pumpBackgroundPreloadQueue() {
+  while (
+    backgroundPreloadActive < BACKGROUND_PRELOAD_CONCURRENCY &&
+    backgroundPreloadQueue.length
+  ) {
+    const job = backgroundPreloadQueue.shift();
+    backgroundPreloadActive++;
+    Promise.resolve()
+      .then(job)
+      .catch(() => {})
+      .finally(() => {
+        backgroundPreloadActive = Math.max(0, backgroundPreloadActive - 1);
+        pumpBackgroundPreloadQueue();
+      });
+  }
+}
+
+function queueBackgroundPreload(key, task) {
+  if (!key || typeof task !== "function") return;
+  if (backgroundPreloadKeys.has(key)) return;
+  backgroundPreloadKeys.add(key);
+  backgroundPreloadQueue.push(async () => {
+    try {
+      await task();
+    } catch (err) {
+      backgroundPreloadKeys.delete(key);
+      throw err;
+    }
+  });
+  pumpBackgroundPreloadQueue();
+}
+
 function loadPano(url, onProgress01 = null) {
+  const startedAt = performance.now();
   return new Promise((resolve, reject) => {
     texLoader.load(
       url,
@@ -2271,6 +2371,7 @@ function loadPano(url, onProgress01 = null) {
         tex.generateMipmaps = false;
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
+        logPerf("pano", "texture", startedAt, `(${url})`);
         resolve(tex);
       },
       (xhr) => {
@@ -2317,6 +2418,7 @@ function canInteractDuringTransitionVideo() {
 }
 
 function loadVideoSrc(url) {
+  const startedAt = performance.now();
   return new Promise((resolve, reject) => {
     if (transitionVideo.src && transitionVideo.src.endsWith(url)) {
       if (!isNaN(transitionVideo.duration) && transitionVideo.duration > 0) {
@@ -2334,6 +2436,7 @@ function loadVideoSrc(url) {
 
     const onLoadedMeta = () => {
       cleanup();
+      logPerf("video", "transition src", startedAt, `(${url})`);
       resolve();
     };
     const onError = () => {
@@ -2426,14 +2529,39 @@ async function ensurePanoLoaded(i, onProgress01 = null) {
     if (typeof onProgress01 === "function") onProgress01(1);
     return state.panoTextures[i];
   }
-  const tex = await loadPano(PANOS[i], onProgress01);
-  state.panoTextures[i] = tex;
+
+  if (panoLoadPromises.has(i)) {
+    const tex = await panoLoadPromises.get(i);
+    if (typeof onProgress01 === "function") onProgress01(1);
+    return tex;
+  }
+
+  const loadPromise = loadPano(PANOS[i], onProgress01)
+    .then((tex) => {
+      state.panoTextures[i] = tex;
+      return tex;
+    })
+    .finally(() => {
+      panoLoadPromises.delete(i);
+    });
+
+  panoLoadPromises.set(i, loadPromise);
+  const tex = await loadPromise;
   if (typeof onProgress01 === "function") onProgress01(1);
   return tex;
 }
 function preloadNearby(i) {
-  ensurePanoLoaded(i + 1).catch(() => {});
-  ensurePanoLoaded(i - 1).catch(() => {});
+  for (let d = 1; d <= NEARBY_PANO_PRELOAD_RADIUS; d++) {
+    const next = i + d;
+    const prev = i - d;
+    if (next >= 0 && next < PANOS.length) {
+      queueBackgroundPreload(`pano:${next}`, () => ensurePanoLoaded(next));
+    }
+    if (prev >= 0 && prev < PANOS.length) {
+      queueBackgroundPreload(`pano:${prev}`, () => ensurePanoLoaded(prev));
+    }
+  }
+  preloadNearbyTransitions(i);
 }
 
 async function ensurePano360Loaded(i, onProgress01 = null) {
@@ -2442,14 +2570,55 @@ async function ensurePano360Loaded(i, onProgress01 = null) {
     if (typeof onProgress01 === "function") onProgress01(1);
     return state.pano360Textures[i];
   }
-  const tex = await loadPano(PHOTO360[i], onProgress01);
-  state.pano360Textures[i] = tex;
+
+  if (pano360LoadPromises.has(i)) {
+    const tex = await pano360LoadPromises.get(i);
+    if (typeof onProgress01 === "function") onProgress01(1);
+    return tex;
+  }
+
+  const loadPromise = loadPano(PHOTO360[i], onProgress01)
+    .then((tex) => {
+      state.pano360Textures[i] = tex;
+      return tex;
+    })
+    .finally(() => {
+      pano360LoadPromises.delete(i);
+    });
+
+  pano360LoadPromises.set(i, loadPromise);
+  const tex = await loadPromise;
   if (typeof onProgress01 === "function") onProgress01(1);
   return tex;
 }
 function preloadNearby360(i) {
-  ensurePano360Loaded(i + 1).catch(() => {});
-  ensurePano360Loaded(i - 1).catch(() => {});
+  for (let d = 1; d <= NEARBY_PANO_PRELOAD_RADIUS; d++) {
+    const next = i + d;
+    const prev = i - d;
+    if (next >= 0 && next < PHOTO360.length) {
+      queueBackgroundPreload(`pano360:${next}`, () => ensurePano360Loaded(next));
+    }
+    if (prev >= 0 && prev < PHOTO360.length) {
+      queueBackgroundPreload(`pano360:${prev}`, () => ensurePano360Loaded(prev));
+    }
+  }
+  preloadNearbyTransitions(i);
+}
+
+function preloadNearbyTransitions(i) {
+  const from = Math.max(0, i - NEARBY_TRANSITION_PRELOAD_RADIUS);
+  const to = Math.min(PANOS.length - 1, i + NEARBY_TRANSITION_PRELOAD_RADIUS);
+
+  for (let idx = from; idx <= to; idx++) {
+    if (idx < PANOS.length - 1) {
+      const forwardUrl = transitionPathForward(idx);
+      queueBackgroundPreload(`transition:f:${idx}`, () => preloadVideoUrl(forwardUrl));
+    }
+    if (idx > 0) {
+      const reverseUrl = transitionPathReverse(idx);
+      queueBackgroundPreload(`transition:r:${idx}`, () => preloadVideoUrl(reverseUrl));
+    }
+  }
 }
 
 function transitionPathForward(fromIndex) {
@@ -3073,6 +3242,7 @@ function applyDollhouseEnvironmentMap(envMap) {
 function ensureDollhouseReflectionEnvironment() {
   if (dollhouseEnvMap) return Promise.resolve(dollhouseEnvMap);
   if (dollhouseEnvLoadPromise) return dollhouseEnvLoadPromise;
+  const startedAt = performance.now();
 
   dollhouseEnvLoadPromise = new Promise((resolve, reject) => {
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -3085,6 +3255,7 @@ function ensureDollhouseReflectionEnvironment() {
           const envRT = pmrem.fromEquirectangular(hdrTexture);
           dollhouseEnvMap = envRT.texture;
           applyDollhouseEnvironmentMap(dollhouseEnvMap);
+          logPerf("env", "HDRI", startedAt, `(${DOLLHOUSE_REFLECTION_EXR_URL})`);
           resolve(dollhouseEnvMap);
         } catch (err) {
           reject(err);
@@ -4191,9 +4362,15 @@ async function loadDollModel(key, onProgress01 = null) {
     if (typeof onProgress01 === "function") onProgress01(1);
     return dollCache.get(key).root;
   }
+  if (dollLoadPromises.has(key)) {
+    const root = await dollLoadPromises.get(key);
+    if (typeof onProgress01 === "function") onProgress01(1);
+    return root;
+  }
 
   const url = dollUrlForKey(key);
-  return new Promise((resolve, reject) => {
+  const startedAt = performance.now();
+  const loadPromise = new Promise((resolve, reject) => {
     gltfLoader.load(
       url,
       (gltf) => {
@@ -4211,6 +4388,7 @@ async function loadDollModel(key, onProgress01 = null) {
         if (key === "up") dollhouseReady.up = true;
         if (key === "full") dollhouseReady.full = true;
 
+        logPerf("model", key, startedAt, `(${url})`);
         resolve(root);
       },
       (xhr) => {
@@ -4222,7 +4400,12 @@ async function loadDollModel(key, onProgress01 = null) {
       },
       (err) => reject(err)
     );
+  }).finally(() => {
+    dollLoadPromises.delete(key);
   });
+
+  dollLoadPromises.set(key, loadPromise);
+  return loadPromise;
 }
 
 async function ensureReferenceReady() {
@@ -4963,24 +5146,48 @@ async function preloadStartAssets() {
   if (__preloadStartAssetsPromise) return __preloadStartAssetsPromise;
 
   __preloadStartAssetsPromise = (async () => {
+    const startedAt = performance.now();
+    ensureTourNetworkHints();
+    if (PANOS[0]) appendResourceHint("preload", PANOS[0], { as: "image", crossOrigin: true });
+    if (PHOTO360[0]) appendResourceHint("preload", PHOTO360[0], { as: "image", crossOrigin: true });
+    if (DOLLHOUSE_GLB_DOWN) appendResourceHint("preload", DOLLHOUSE_GLB_DOWN, { as: "fetch", crossOrigin: true });
+    if (DOLLHOUSE_GLB_FULL) appendResourceHint("preload", DOLLHOUSE_GLB_FULL, { as: "fetch", crossOrigin: true });
+    if (DOLLHOUSE_GLB_UP) appendResourceHint("preload", DOLLHOUSE_GLB_UP, { as: "fetch", crossOrigin: true });
+    appendResourceHint("preload", DOLLHOUSE_REFLECTION_EXR_URL, { as: "fetch", crossOrigin: true });
+
     await ensurePanoLoaded(0).catch(() => {});
     if (PHOTO360.length) await ensurePano360Loaded(0).catch(() => {});
     const tourStartUrl = getTourStartVideoUrl();
-    if (tourStartUrl) preloadVideoUrl(tourStartUrl).catch(() => {});
+    if (tourStartUrl) {
+      appendResourceHint("preload", tourStartUrl, { as: "video", crossOrigin: true });
+      preloadVideoUrl(tourStartUrl).catch(() => {});
+    }
     await yieldToBrowser(0);
 
-    // Priority: down
-    await loadDollModel("down").catch(() => {});
-    await ensureReferenceReady().catch(() => {});
+    preloadNearby(0);
+    if (PHOTO360.length) preloadNearby360(0);
+
+    if (PANOS.length > 1) {
+      const nextTransition = transitionPathForward(0);
+      appendResourceHint("preload", nextTransition, { as: "video", crossOrigin: true });
+      queueBackgroundPreload("transition:f:0", () => preloadVideoUrl(nextTransition));
+    }
+
+    await ensureDollhouseReflectionEnvironment().catch(() => {});
     await yieldToBrowser(0);
 
-    loadDollModel("full").catch(() => {});
-    loadDollModel("up").catch(() => {});
+    queueBackgroundPreload("doll:down", () => loadDollModel("down"));
+    queueBackgroundPreload("doll:full", async () => {
+      await loadDollModel("full");
+      await ensureReferenceReady().catch(() => {});
+    });
+    queueBackgroundPreload("doll:up", () => loadDollModel("up"));
 
-    ensurePanoLoaded(1).catch(() => {});
-    if (PANOS.length > 1) preloadVideoUrl(transitionPathForward(0)).catch(() => {});
+    if (PANOS.length > 2) queueBackgroundPreload("pano:2", () => ensurePanoLoaded(2));
+    if (PHOTO360.length > 2) queueBackgroundPreload("pano360:2", () => ensurePano360Loaded(2));
 
     await yieldToBrowser(50);
+    logPerf("batch", "intro preload", startedAt);
   })();
 
   return __preloadStartAssetsPromise;
