@@ -34,8 +34,9 @@
         --container-stroke-width: 3px;
         --ui-responsive-scale: 1;
         --desktop-primary-ui-scale: 0.85;
-        --desktop-nav-ui-scale: 0.9;
-        --desktop-doll-ui-scale: 0.75;
+        --desktop-tab-ui-scale: 0.935;
+        --desktop-nav-ui-scale: 0.99;
+        --desktop-doll-ui-scale: 0.825;
 
         /* NAV COLORS */
         --nav-bg: #ffffff;
@@ -243,15 +244,15 @@
         position: absolute;
         left: calc(14px * var(--ui-responsive-scale));
         top: calc(14px * var(--ui-responsive-scale));
-        width: calc(var(--view-tabs-width) * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        width: calc(var(--view-tabs-width) * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
         box-sizing: border-box;
         z-index: 20;
         display: grid;
         grid-template-columns: minmax(0, 1.03fr) minmax(0, 1fr);
         align-items: stretch;
         justify-items: stretch;
-        gap: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
-        padding: calc(10px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        gap: calc(10px * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
+        padding: calc(10px * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
         border-radius: 16px;
         background: rgba(0, 0, 0, 0.38);
         backdrop-filter: blur(10px);
@@ -396,10 +397,10 @@
       .tabBtn {
         min-width: 0;
         width: 100%;
-        height: calc(66px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
-        padding: 0 calc(23px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        height: calc(66px * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
+        padding: 0 calc(23px * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
         border-radius: 20px;
-        font-size: calc(16.6px * var(--desktop-primary-ui-scale) * var(--ui-responsive-scale));
+        font-size: calc(16.6px * var(--desktop-tab-ui-scale) * var(--ui-responsive-scale));
         justify-content: center;
         text-align: center;
 
@@ -983,6 +984,7 @@
           /* mobile-only tuning */
           --ui-responsive-scale: 0.78;
           --desktop-primary-ui-scale: 1;
+          --desktop-tab-ui-scale: 1;
           --desktop-nav-ui-scale: 1;
           --desktop-doll-ui-scale: 1;
           --view-tabs-width: min(75.6vw, 324px);

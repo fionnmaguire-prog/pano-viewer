@@ -2284,6 +2284,9 @@ function onPointerDown(e) {
   lastY = e.clientY;
 }
 function onPointerMove(e) {
+  if (mode === "dollhouse" && e.pointerType === "touch") {
+    updateDollhouseTouchTapCandidate(e);
+  }
   if (!isPanoLikeMode()) return;
   if (!isPointerDown) return;
 
@@ -2313,13 +2316,33 @@ function onPointerMove(e) {
 
   applyYawPitch();
 }
-function onPointerUp() {
+function onPointerUp(e) {
+  if (e?.pointerType === "touch") {
+    const hadMultiTouch = activeDollhouseTouchPointers.size > 1;
+    activeDollhouseTouchPointers.delete(e.pointerId);
+    if (hadMultiTouch) suppressDollhouseTouchSelection();
+    clearDollhouseTouchTapCandidate(e.pointerId);
+  }
   isPointerDown = false;
 }
 
 renderer.domElement.addEventListener("pointerdown", onPointerDown);
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "touch") return;
+  activeDollhouseTouchPointers.add(e.pointerId);
+  if (mode !== "dollhouse" || !isMobilePlayerLayout()) return;
+
+  if (activeDollhouseTouchPointers.size > 1) {
+    markDollhouseTouchTapCancelled();
+    suppressDollhouseTouchSelection();
+    return;
+  }
+
+  if (!isNodeZooming) beginDollhouseTouchTapCandidate(e);
+});
 window.addEventListener("pointermove", onPointerMove);
 window.addEventListener("pointerup", onPointerUp);
+window.addEventListener("pointercancel", onPointerUp);
 
 // -----------------------------
 // Loading helpers (panos)
@@ -3508,7 +3531,9 @@ const DOLL_MODEL_VIEW_SWITCH_MS = 1440;
 const MOBILE_PLAYER_LAYOUT_QUERY = "(max-width: 820px), (max-aspect-ratio: 1/1)";
 const DOLL_MOBILE_DEFAULT_ZOOM_OUT_FACTOR = 1.5;
 const DOLL_FULL_DESKTOP_DEFAULT_ZOOM_OUT_FACTOR = 1.15;
-const DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX = 44;
+const DOLLHOUSE_MOBILE_TOUCH_HIT_RADIUS_PX = 56;
+const DOLLHOUSE_TOUCH_TAP_MOVE_PX = 14;
+const DOLLHOUSE_TOUCH_PINCH_SUPPRESS_MS = 320;
 const DOLLHOUSE_HINT_DELAY_MS = 1000;
 const DOLLHOUSE_HINT_VISIBLE_MS = 5000;
 const mobilePlayerLayoutMql =
@@ -4931,6 +4956,7 @@ function zoomTowardNode(
 renderer.domElement.addEventListener("pointermove", (e) => {
   if (mode !== "dollhouse") return;
   if (isNodeZooming) return;
+  if (e.pointerType === "touch" && activeDollhouseTouchPointers.size > 1) return;
 
   const hit = raycastNodes(e);
 
@@ -4962,30 +4988,43 @@ renderer.domElement.addEventListener(
   async (e) => {
     if (mode !== "dollhouse") return;
     if (isNodeZooming) return;
+    if (e.pointerType === "touch" && isMobilePlayerLayout()) return;
 
     const hit = raycastNodes(e);
     if (!hit) return;
 
     e.preventDefault();
     e.stopPropagation();
+    await activateDollhouseNode(hit);
+  },
+  { passive: false }
+);
 
-    const panoIndex = hit.userData.panoIndex;
-    if (panoIndex == null) return;
+renderer.domElement.addEventListener(
+  "pointerup",
+  async (e) => {
+    if (mode !== "dollhouse") return;
+    if (isNodeZooming) return;
+    if (e.pointerType !== "touch" || !isMobilePlayerLayout()) return;
 
-    if (hoveredNode) {
-      const s = nodeHoverState.get(hoveredNode);
-      if (s) s.target = 0;
-      hoveredNode = null;
-    }
-    clearRoomLabelHoverDelay();
-    renderer.domElement.style.cursor = "default";
-    hideRoomLabelText();
+    const candidate = dollhouseTouchTapCandidate;
+    const validTap =
+      candidate &&
+      candidate.pointerId === e.pointerId &&
+      !candidate.cancelled &&
+      !candidate.moved &&
+      activeDollhouseTouchPointers.size <= 1 &&
+      canUseDollhouseTouchTapSelection();
 
-    const ok = await zoomTowardNode(hit, 500, 0.25, 0.85, {
-      triggerAt: 0.6,
-      onTrigger: () => exitDollhouseToPreferredPano(panoIndex),
-    });
-    if (!ok) return;
+    clearDollhouseTouchTapCandidate(e.pointerId);
+    if (!validTap) return;
+
+    const hit = raycastNodes(e);
+    if (!hit) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    await activateDollhouseNode(hit);
   },
   { passive: false }
 );
@@ -5015,6 +5054,76 @@ function syncYouAreHereToCurrentPano() {
 // Dollhouse model switcher
 // -----------------------------
 let switching = false;
+const activeDollhouseTouchPointers = new Set();
+let dollhouseTouchTapCandidate = null;
+let dollhouseTouchSelectionSuppressedUntil = 0;
+
+function clearDollhouseTouchTapCandidate(pointerId = null) {
+  if (!dollhouseTouchTapCandidate) return;
+  if (pointerId != null && dollhouseTouchTapCandidate.pointerId !== pointerId) return;
+  dollhouseTouchTapCandidate = null;
+}
+
+function suppressDollhouseTouchSelection(ms = DOLLHOUSE_TOUCH_PINCH_SUPPRESS_MS) {
+  dollhouseTouchSelectionSuppressedUntil = Math.max(
+    dollhouseTouchSelectionSuppressedUntil,
+    performance.now() + ms
+  );
+  clearDollhouseTouchTapCandidate();
+}
+
+function canUseDollhouseTouchTapSelection() {
+  return performance.now() >= dollhouseTouchSelectionSuppressedUntil;
+}
+
+function beginDollhouseTouchTapCandidate(e) {
+  dollhouseTouchTapCandidate = {
+    pointerId: e.pointerId,
+    startX: e.clientX,
+    startY: e.clientY,
+    moved: false,
+    cancelled: false,
+  };
+}
+
+function updateDollhouseTouchTapCandidate(e) {
+  if (!dollhouseTouchTapCandidate) return;
+  if (dollhouseTouchTapCandidate.pointerId !== e.pointerId) return;
+
+  if (
+    Math.hypot(e.clientX - dollhouseTouchTapCandidate.startX, e.clientY - dollhouseTouchTapCandidate.startY) >=
+    DOLLHOUSE_TOUCH_TAP_MOVE_PX
+  ) {
+    dollhouseTouchTapCandidate.moved = true;
+  }
+}
+
+function markDollhouseTouchTapCancelled() {
+  if (!dollhouseTouchTapCandidate) return;
+  dollhouseTouchTapCandidate.cancelled = true;
+}
+
+async function activateDollhouseNode(hit) {
+  if (!hit) return false;
+
+  const panoIndex = hit.userData.panoIndex;
+  if (panoIndex == null) return false;
+
+  if (hoveredNode) {
+    const s = nodeHoverState.get(hoveredNode);
+    if (s) s.target = 0;
+    hoveredNode = null;
+  }
+  clearRoomLabelHoverDelay();
+  renderer.domElement.style.cursor = "default";
+  hideRoomLabelText();
+
+  const ok = await zoomTowardNode(hit, 500, 0.25, 0.85, {
+    triggerAt: 0.6,
+    onTrigger: () => exitDollhouseToPreferredPano(panoIndex),
+  });
+  return ok;
+}
 
 async function switchDollhouseModel(key) {
   if (switching) return;
