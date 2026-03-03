@@ -1846,7 +1846,14 @@ function refreshPano360ControlVisibility() {
   if (pano360Control) {
     if (shouldShow) {
       pano360Control.classList.remove("hidden");
-      pano360Control.style.display = "";
+      pano360Control.style.display = "inline-flex";
+      if (hasCompletedInitialPanoUIReveal && isPanoLikeMode()) {
+        pano360Control.style.opacity = "1";
+        pano360Control.style.pointerEvents = "auto";
+      } else {
+        pano360Control.style.opacity = "0";
+        pano360Control.style.pointerEvents = "none";
+      }
     } else {
       pano360Control.classList.add("hidden");
       pano360Control.style.display = "none";
