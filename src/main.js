@@ -3408,8 +3408,76 @@ function frameCameraToObject(camera, controls, object, fitOffset = 1.25) {
 // -----------------------------
 // Dollhouse loading/cache
 // -----------------------------
-const gltfLoader = new GLTFLoader();
-const exrLoader = new EXRLoader();
+const dollhouseLoadingManager = new THREE.LoadingManager();
+const dollhouseRequestStats = {
+  totalStarted: 0,
+  totalFinished: 0,
+  active: 0,
+};
+let activeDollhouseSwitchPerfMonitor = null;
+
+function noteDollhouseRequestStart(url) {
+  dollhouseRequestStats.totalStarted += 1;
+  dollhouseRequestStats.active += 1;
+
+  if (activeDollhouseSwitchPerfMonitor) {
+    activeDollhouseSwitchPerfMonitor.urls.push(url);
+  }
+}
+
+function noteDollhouseRequestEnd() {
+  dollhouseRequestStats.totalFinished += 1;
+  dollhouseRequestStats.active = Math.max(0, dollhouseRequestStats.active - 1);
+}
+
+const __dollhouseItemStart = dollhouseLoadingManager.itemStart.bind(dollhouseLoadingManager);
+dollhouseLoadingManager.itemStart = function patchedDollhouseItemStart(url) {
+  noteDollhouseRequestStart(url);
+  return __dollhouseItemStart(url);
+};
+
+const __dollhouseItemEnd = dollhouseLoadingManager.itemEnd.bind(dollhouseLoadingManager);
+dollhouseLoadingManager.itemEnd = function patchedDollhouseItemEnd(url) {
+  noteDollhouseRequestEnd(url);
+  return __dollhouseItemEnd(url);
+};
+
+const __dollhouseItemError = dollhouseLoadingManager.itemError.bind(dollhouseLoadingManager);
+dollhouseLoadingManager.itemError = function patchedDollhouseItemError(url) {
+  noteDollhouseRequestEnd(url);
+  return __dollhouseItemError(url);
+};
+
+function beginDollhouseSwitchPerfMonitor(context = {}) {
+  if (!IS_LOCAL_DEV) return null;
+
+  const monitor = {
+    startedAt: performance.now(),
+    urls: [],
+    context,
+  };
+  activeDollhouseSwitchPerfMonitor = monitor;
+  return monitor;
+}
+
+function finishDollhouseSwitchPerfMonitor(monitor, outcome = "complete", extra = {}) {
+  if (!IS_LOCAL_DEV || !monitor) return;
+  if (activeDollhouseSwitchPerfMonitor === monitor) activeDollhouseSwitchPerfMonitor = null;
+
+  const durationMs = performance.now() - monitor.startedAt;
+  const uniqueUrls = [...new Set(monitor.urls)];
+  console.info("[DOLLHOUSE PERF] switch", {
+    durationMs: Number(durationMs.toFixed(1)),
+    newNetworkRequests: uniqueUrls.length,
+    urls: uniqueUrls,
+    outcome,
+    ...monitor.context,
+    ...extra,
+  });
+}
+
+const gltfLoader = new GLTFLoader(dollhouseLoadingManager);
+const exrLoader = new EXRLoader(dollhouseLoadingManager);
 const dollCache = new Map(); // key -> { root, center, size, alignedOnce, nodes }
 let activeDollKey = "down";
 let activeDollRoot = null;
@@ -4102,6 +4170,207 @@ function collectUniqueMaterialsFromRoot(root) {
   });
 
   return out;
+}
+
+const MATERIAL_TEXTURE_KEYS = [
+  "map",
+  "alphaMap",
+  "aoMap",
+  "bumpMap",
+  "clearcoatMap",
+  "clearcoatNormalMap",
+  "clearcoatRoughnessMap",
+  "displacementMap",
+  "emissiveMap",
+  "envMap",
+  "iridescenceMap",
+  "iridescenceThicknessMap",
+  "lightMap",
+  "metalnessMap",
+  "normalMap",
+  "roughnessMap",
+  "sheenColorMap",
+  "sheenRoughnessMap",
+  "specularColorMap",
+  "specularIntensityMap",
+  "thicknessMap",
+  "transmissionMap",
+];
+const warmedTextureDecodeSet = new WeakSet();
+const warmCompiledDollKeys = new Set();
+let warmDollhouseAssetsPromise = null;
+let warmDollhouseAssetsScheduled = false;
+
+function collectUniqueTexturesFromRoot(root) {
+  const mats = collectUniqueMaterialsFromRoot(root);
+  const seen = new Set();
+  const textures = [];
+
+  for (const mat of mats) {
+    for (const key of MATERIAL_TEXTURE_KEYS) {
+      const tex = mat?.[key];
+      if (!tex?.isTexture || seen.has(tex)) continue;
+      seen.add(tex);
+      textures.push(tex);
+    }
+  }
+
+  return textures;
+}
+
+async function warmDecodeTextureSource(texture) {
+  if (!texture || warmedTextureDecodeSet.has(texture)) return;
+  warmedTextureDecodeSet.add(texture);
+
+  const source = texture.source?.data || texture.image;
+  if (!source) return;
+
+  if (
+    typeof HTMLImageElement !== "undefined" &&
+    source instanceof HTMLImageElement &&
+    typeof source.decode === "function"
+  ) {
+    try {
+      await source.decode();
+    } catch {}
+  }
+
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(source);
+      bitmap.close?.();
+    } catch {}
+  }
+}
+
+function initTextureOnRenderer(texture) {
+  if (!texture) return;
+  if (typeof renderer.initTexture === "function") {
+    try {
+      renderer.initTexture(texture);
+      return;
+    } catch {}
+  }
+  texture.needsUpdate = true;
+}
+
+async function warmPrepareDollhouseRoot(key, root) {
+  if (!root || warmCompiledDollKeys.has(key)) return;
+
+  const textures = collectUniqueTexturesFromRoot(root);
+  await Promise.all(textures.map((tex) => warmDecodeTextureSource(tex)));
+  textures.forEach((tex) => initTextureOnRenderer(tex));
+
+  const prevToneMapping = renderer.toneMapping;
+  const prevToneMappingExposure = renderer.toneMappingExposure;
+  const prevOrbitEnabled = orbit.enabled;
+  const prevTarget = orbit.target.clone();
+  const prevCamPos = dollCamera.position.clone();
+  const prevCamQuat = dollCamera.quaternion.clone();
+  const prevZoom = dollCamera.zoom;
+  const prevNear = dollCamera.near;
+  const prevFar = dollCamera.far;
+  const hadParent = !!root.parent;
+  const prevParent = root.parent || null;
+
+  try {
+    applyRenderLookForMode("dollhouse");
+    alignModelToReference(key);
+    if (!root.parent) dollScene.add(root);
+
+    const warmView = getDefaultDollViewForKey(key);
+    if (warmView) applyOrbitViewWithLockedPivot(warmView);
+    else frameCameraToObject(dollCamera, orbit, root, 0.7);
+
+    applyReferenceClippingAndLimits();
+    if (dollhouseEnvMap) {
+      try {
+        initTextureOnRenderer(dollhouseEnvMap);
+      } catch {}
+    }
+
+    if (typeof renderer.compileAsync === "function") {
+      try {
+        await renderer.compileAsync(dollScene, dollCamera);
+      } catch {
+        renderer.compile(dollScene, dollCamera);
+      }
+    } else {
+      renderer.compile(dollScene, dollCamera);
+    }
+
+    warmCompiledDollKeys.add(key);
+  } finally {
+    if (!hadParent && root.parent === dollScene && activeDollRoot !== root) {
+      dollScene.remove(root);
+    } else if (prevParent && root.parent !== prevParent) {
+      prevParent.add(root);
+    }
+
+    orbit.target.copy(prevTarget);
+    dollCamera.position.copy(prevCamPos);
+    dollCamera.quaternion.copy(prevCamQuat);
+    dollCamera.zoom = prevZoom;
+    dollCamera.near = prevNear;
+    dollCamera.far = prevFar;
+    dollCamera.updateProjectionMatrix();
+    orbit.enabled = prevOrbitEnabled;
+    orbit.update();
+    renderer.toneMapping = prevToneMapping;
+    renderer.toneMappingExposure = prevToneMappingExposure;
+  }
+}
+
+function requestIdleStart(task, timeout = 1500) {
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => task(), { timeout });
+    return;
+  }
+  setTimeout(() => task(), 32);
+}
+
+function warmPreloadDollhouseAssets(reason = "unknown") {
+  if (warmDollhouseAssetsPromise) return warmDollhouseAssetsPromise;
+
+  const startedAt = performance.now();
+  warmDollhouseAssetsPromise = (async () => {
+    await ensureDollhouseReflectionEnvironment().catch(() => {});
+    await ensureReferenceReady();
+
+    for (const key of ["full", "down", "up"]) {
+      const root = await loadDollModel(key);
+      await warmPrepareDollhouseRoot(key, root);
+      await yieldToBrowser(0);
+    }
+
+    logPerf("batch", "dollhouse warm preload", startedAt, `(${reason})`);
+    return true;
+  })().catch((err) => {
+    warmDollhouseAssetsPromise = null;
+    console.warn("Warm dollhouse preload failed:", err);
+    throw err;
+  });
+
+  return warmDollhouseAssetsPromise;
+}
+
+function scheduleWarmDollhouseAssets(reason = "tour_ready") {
+  if (warmDollhouseAssetsScheduled || warmDollhouseAssetsPromise) return;
+  warmDollhouseAssetsScheduled = true;
+  requestIdleStart(() => {
+    warmPreloadDollhouseAssets(reason).finally(() => {
+      warmDollhouseAssetsScheduled = false;
+    });
+  });
+}
+
+function getDollhouseWarmStatus() {
+  return {
+    envReady: !!dollhouseEnvMap,
+    refReady,
+    cachedModels: [...dollCache.keys()],
+    preparedModels: [...warmCompiledDollKeys],
+  };
 }
 
 async function playDollhouseBottomUpWipe(root, durationMs = DOLL_WIPE_SWITCH_MS) {
@@ -4866,6 +5135,17 @@ const DOLLHOUSE_FIRST_LOADER_MIN_VISIBLE_MS = 1000;
 if (tabDollhouse) {
   tabDollhouse.addEventListener("click", async () => {
     if (mode === "dollhouse" || tabDollhouse.classList.contains("active")) return;
+    const switchPerfMonitor = beginDollhouseSwitchPerfMonitor({
+      fromMode: mode,
+      nextMode: "dollhouse",
+      activeDollKey,
+    });
+    let switchPerfFinished = false;
+    const finishSwitchPerf = (outcome, extra = {}) => {
+      if (switchPerfFinished) return;
+      switchPerfFinished = true;
+      finishDollhouseSwitchPerfMonitor(switchPerfMonitor, outcome, extra);
+    };
     dollhouseEnterToken++;
     const token = dollhouseEnterToken;
     const stillValid = () => token === dollhouseEnterToken;
@@ -5127,8 +5407,14 @@ revealDollUIWhenReady();
         hasShownInitialDollhouseLoader = true;
         pm.finish();
       }
+
+      finishSwitchPerf("complete", getDollhouseWarmStatus());
     } catch (e) {
       console.error("Failed to load dollhouse:", e);
+      finishSwitchPerf("error", {
+        ...getDollhouseWarmStatus(),
+        error: e?.message || String(e),
+      });
       if (pm) pm.cancel();
       setYouAreHereSuppressed(false);
 
@@ -5139,6 +5425,8 @@ revealDollUIWhenReady();
         await fadeOverlayTo(0, 180);
         fadeOverlay.style.opacity = "0";
       } catch {}
+    } finally {
+      finishSwitchPerf("cancelled", getDollhouseWarmStatus());
     }
   });
 }
@@ -5180,15 +5468,8 @@ async function preloadStartAssets() {
       queueBackgroundPreload("transition:f:0", () => preloadVideoUrl(nextTransition));
     }
 
-    await ensureDollhouseReflectionEnvironment().catch(() => {});
+    warmPreloadDollhouseAssets("begin_flow").catch(() => {});
     await yieldToBrowser(0);
-
-    queueBackgroundPreload("doll:down", () => loadDollModel("down"));
-    queueBackgroundPreload("doll:full", async () => {
-      await loadDollModel("full");
-      await ensureReferenceReady().catch(() => {});
-    });
-    queueBackgroundPreload("doll:up", () => loadDollModel("up"));
 
     if (PANOS.length > 2) queueBackgroundPreload("pano:2", () => ensurePanoLoaded(2));
     if (PHOTO360.length > 2) queueBackgroundPreload("pano360:2", () => ensurePano360Loaded(2));
@@ -5488,6 +5769,8 @@ async function init() {
           .map((n) => Math.trunc(n))
       : []
   );
+
+  scheduleWarmDollhouseAssets("tour_ready");
 
   // Start button
   if (startBtn) {
