@@ -1828,10 +1828,12 @@ function setPano360SwitchState(enabled) {
 
 let hasAutoEnteredPano360OnFirstLoad = false;
 const FIRST_LOAD_360_HINT_SHOW_DELAY_MS = 1000;
-const FIRST_LOAD_360_AUTO_SWITCH_DELAY_MS = 2000;
-const FIRST_LOAD_360_HINT_HIDE_DELAY_MS = 2000;
+const FIRST_LOAD_360_ARROW_SHOW_DELAY_MS = 2000;
+const FIRST_LOAD_360_SWITCH_AFTER_ARROW_DELAY_MS = 2000;
+const FIRST_LOAD_360_HINT_HIDE_AFTER_SWITCH_DELAY_MS = 2000;
 let firstLoadPano360GuideToken = 0;
 let firstLoadPano360GuideShowTimer = null;
+let firstLoadPano360GuideArrowTimer = null;
 let firstLoadPano360GuideSwitchTimer = null;
 let firstLoadPano360GuideHideTimer = null;
 
@@ -1839,6 +1841,10 @@ function clearFirstLoadPano360GuideTimers() {
   if (firstLoadPano360GuideShowTimer) {
     clearTimeout(firstLoadPano360GuideShowTimer);
     firstLoadPano360GuideShowTimer = null;
+  }
+  if (firstLoadPano360GuideArrowTimer) {
+    clearTimeout(firstLoadPano360GuideArrowTimer);
+    firstLoadPano360GuideArrowTimer = null;
   }
   if (firstLoadPano360GuideSwitchTimer) {
     clearTimeout(firstLoadPano360GuideSwitchTimer);
@@ -1855,22 +1861,23 @@ function hideFirstLoadPano360Guide({ invalidate = true } = {}) {
   clearFirstLoadPano360GuideTimers();
   if (!pano360AutoHint) return;
   pano360AutoHint.classList.remove("visible");
+  pano360AutoHint.classList.remove("arrowVisible");
 }
 
 function layoutFirstLoadPano360Guide() {
-  if (!pano360AutoHint || !pano360AutoHintArrow || !pano360AutoHintText || !pano360Control) return;
+  if (!pano360AutoHint || !pano360AutoHintArrow || !pano360AutoHintText || !pano360Switch) return;
   if (!pano360AutoHint.classList.contains("visible")) return;
 
   const overlayRect = pano360AutoHint.getBoundingClientRect();
   const textRect = pano360AutoHintText.getBoundingClientRect();
-  const controlRect = pano360Control.getBoundingClientRect();
+  const switchRect = pano360Switch.getBoundingClientRect();
 
-  if (!overlayRect.width || !overlayRect.height || !textRect.width || !controlRect.width) return;
+  if (!overlayRect.width || !overlayRect.height || !textRect.width || !switchRect.width) return;
 
   const startX = textRect.left + textRect.width * 0.5 - overlayRect.left;
-  const startY = textRect.top + textRect.height * 0.35 - overlayRect.top;
-  const targetX = controlRect.left + controlRect.width * 0.5 - overlayRect.left;
-  const targetY = controlRect.top + controlRect.height * 0.5 - overlayRect.top;
+  const startY = textRect.top + textRect.height * 0.5 - overlayRect.top;
+  const targetX = switchRect.left + switchRect.width * 0.5 - overlayRect.left;
+  const targetY = switchRect.top + switchRect.height * 0.5 - overlayRect.top;
 
   const dx = targetX - startX;
   const dy = targetY - startY;
@@ -1885,7 +1892,14 @@ function layoutFirstLoadPano360Guide() {
 
 function showFirstLoadPano360Guide() {
   if (!pano360AutoHint) return;
+  pano360AutoHint.classList.remove("arrowVisible");
   pano360AutoHint.classList.add("visible");
+  requestAnimationFrame(() => layoutFirstLoadPano360Guide());
+}
+
+function showFirstLoadPano360GuideArrow() {
+  if (!pano360AutoHint) return;
+  pano360AutoHint.classList.add("arrowVisible");
   requestAnimationFrame(() => layoutFirstLoadPano360Guide());
 }
 
@@ -1905,27 +1919,36 @@ function scheduleAutoEnterPano360OnFirstLoad() {
 
     showFirstLoadPano360Guide();
 
-    firstLoadPano360GuideSwitchTimer = setTimeout(async () => {
-      firstLoadPano360GuideSwitchTimer = null;
+    firstLoadPano360GuideArrowTimer = setTimeout(() => {
+      firstLoadPano360GuideArrowTimer = null;
       if (token !== firstLoadPano360GuideToken) return;
       if (mode !== "pano" || state.index !== 0) return;
       if (!isPano360Available()) return;
 
-      try {
-        setPano360SwitchState(true);
-        await enterPano360Mode({ useBlurSwap: true });
-      } catch (e) {
-        console.warn("Auto-enter 360 mode on first load failed:", e);
-        setPano360SwitchState(false);
-      }
+      showFirstLoadPano360GuideArrow();
 
-      if (token !== firstLoadPano360GuideToken) return;
-      firstLoadPano360GuideHideTimer = setTimeout(() => {
-        firstLoadPano360GuideHideTimer = null;
+      firstLoadPano360GuideSwitchTimer = setTimeout(async () => {
+        firstLoadPano360GuideSwitchTimer = null;
         if (token !== firstLoadPano360GuideToken) return;
-        hideFirstLoadPano360Guide({ invalidate: false });
-      }, FIRST_LOAD_360_HINT_HIDE_DELAY_MS);
-    }, FIRST_LOAD_360_AUTO_SWITCH_DELAY_MS);
+        if (mode !== "pano" || state.index !== 0) return;
+        if (!isPano360Available()) return;
+
+        try {
+          setPano360SwitchState(true);
+          await enterPano360Mode({ useBlurSwap: true });
+        } catch (e) {
+          console.warn("Auto-enter 360 mode on first load failed:", e);
+          setPano360SwitchState(false);
+        }
+
+        if (token !== firstLoadPano360GuideToken) return;
+        firstLoadPano360GuideHideTimer = setTimeout(() => {
+          firstLoadPano360GuideHideTimer = null;
+          if (token !== firstLoadPano360GuideToken) return;
+          hideFirstLoadPano360Guide({ invalidate: false });
+        }, FIRST_LOAD_360_HINT_HIDE_AFTER_SWITCH_DELAY_MS);
+      }, FIRST_LOAD_360_SWITCH_AFTER_ARROW_DELAY_MS);
+    }, FIRST_LOAD_360_ARROW_SHOW_DELAY_MS);
   }, FIRST_LOAD_360_HINT_SHOW_DELAY_MS);
 }
 
