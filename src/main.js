@@ -1837,7 +1837,7 @@ const FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS = 2000;
 const FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS = 4000;
 const FIRST_LOAD_360_HINT_TEXT = "Turn 360 Camera View On and Off";
 const FIRST_LOAD_DOLLHOUSE_HINT_TEXT = "Click for Dollhouse View";
-const FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX = 16;
+const FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX = 33;
 let firstLoadPano360GuideToken = 0;
 let firstLoadPano360GuideShowTimer = null;
 let firstLoadPano360GuideArrowTimer = null;
@@ -1954,7 +1954,7 @@ function showFirstLoadPano360Guide({
   if (!pano360AutoHint || !pano360AutoHintText) return;
   pano360AutoHintText.textContent = text;
   pano360AutoHint.classList.toggle("isDollhouseStep", !!dollhouseStep);
-  firstLoadGuideArrowLengthMultiplier = dollhouseStep ? 0.5 : 1;
+  firstLoadGuideArrowLengthMultiplier = dollhouseStep ? 1 : 2;
   firstLoadGuideArrowTargetEl = targetEl || pano360Switch || null;
   if (dollhouseStep) {
     const overlayRect = pano360AutoHint.getBoundingClientRect();
