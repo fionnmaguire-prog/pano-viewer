@@ -1837,6 +1837,7 @@ const FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS = 2000;
 const FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS = 4000;
 const FIRST_LOAD_360_HINT_TEXT = "Turn 360 Camera View On and Off";
 const FIRST_LOAD_DOLLHOUSE_HINT_TEXT = "Click for Dollhouse View";
+const FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX = 44;
 let firstLoadPano360GuideToken = 0;
 let firstLoadPano360GuideShowTimer = null;
 let firstLoadPano360GuideArrowTimer = null;
@@ -1892,9 +1893,7 @@ function hideFirstLoadPano360Guide({ invalidate = true, keepInputLock = false } 
   if (pano360AutoHint) {
     pano360AutoHint.classList.remove("visible");
     pano360AutoHint.classList.remove("arrowVisible");
-    pano360AutoHint.classList.remove("isDollhouseStep");
   }
-  if (pano360AutoHintText) pano360AutoHintText.style.top = "";
   if (!keepInputLock) setFirstLoadGuideInputLocked(false);
 }
 
@@ -1924,7 +1923,7 @@ function layoutFirstLoadPano360Guide() {
   const uy = dirY / fullDist;
   const textHalfDiag = Math.hypot(textRect.width * 0.5, textRect.height * 0.5);
   const startInset = textHalfDiag + 10;
-  const endInset = Math.max(10, targetRect.height * 0.18);
+  const endInset = Math.max(10, targetRect.height * 0.18) + FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX;
 
   const startX = textCenterX + ux * startInset;
   const startY = textCenterY + uy * startInset;
