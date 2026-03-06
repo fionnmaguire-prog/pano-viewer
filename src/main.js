@@ -1874,14 +1874,30 @@ function layoutFirstLoadPano360Guide() {
 
   if (!overlayRect.width || !overlayRect.height || !textRect.width || !switchRect.width) return;
 
-  const startX = textRect.left + textRect.width * 0.5 - overlayRect.left;
-  const startY = textRect.top + textRect.height * 0.5 - overlayRect.top;
+  const textCenterX = textRect.left + textRect.width * 0.5 - overlayRect.left;
+  const textCenterY = textRect.top + textRect.height * 0.5 - overlayRect.top;
   const targetX = switchRect.left + switchRect.width * 0.5 - overlayRect.left;
   const targetY = switchRect.top + switchRect.height * 0.5 - overlayRect.top;
 
-  const dx = targetX - startX;
-  const dy = targetY - startY;
-  const length = Math.max(24, Math.hypot(dx, dy) - 10);
+  const dirX = targetX - textCenterX;
+  const dirY = targetY - textCenterY;
+  const fullDist = Math.hypot(dirX, dirY);
+  if (fullDist < 1e-3) return;
+
+  const ux = dirX / fullDist;
+  const uy = dirY / fullDist;
+  const textHalfDiag = Math.hypot(textRect.width * 0.5, textRect.height * 0.5);
+  const startInset = textHalfDiag + 10;
+  const endInset = Math.max(10, switchRect.height * 0.18);
+
+  const startX = textCenterX + ux * startInset;
+  const startY = textCenterY + uy * startInset;
+  const endX = targetX - ux * endInset;
+  const endY = targetY - uy * endInset;
+
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const length = Math.max(18, Math.hypot(dx, dy));
   const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
 
   pano360AutoHintArrow.style.left = `${startX}px`;
