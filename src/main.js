@@ -1837,7 +1837,7 @@ const FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS = 2000;
 const FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS = 4000;
 const FIRST_LOAD_360_HINT_TEXT = "Turn 360 Camera View On and Off";
 const FIRST_LOAD_DOLLHOUSE_HINT_TEXT = "Click for Dollhouse View";
-const FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX = 44;
+const FIRST_LOAD_GUIDE_ARROW_TIP_REACH_PX = 66;
 let firstLoadPano360GuideToken = 0;
 let firstLoadPano360GuideShowTimer = null;
 let firstLoadPano360GuideArrowTimer = null;
@@ -2029,11 +2029,11 @@ function scheduleAutoEnterPano360OnFirstLoad() {
           if (token !== firstLoadPano360GuideToken) return;
           hideFirstLoadPano360Guide({ invalidate: false, keepInputLock: true });
 
-          firstLoadDollhouseGuideShowTimer = setTimeout(() => {
-            firstLoadDollhouseGuideShowTimer = null;
-            if (token !== firstLoadPano360GuideToken) return;
-            if ((mode !== "pano" && mode !== "pano360") || state.index !== 0) {
-              hideFirstLoadPano360Guide({ invalidate: false });
+            firstLoadDollhouseGuideShowTimer = setTimeout(() => {
+              firstLoadDollhouseGuideShowTimer = null;
+              if (token !== firstLoadPano360GuideToken) return;
+              if ((mode !== "pano" && mode !== "pano360") || state.index !== 0) {
+              hideFirstLoadPano360Guide();
               return;
             }
 
@@ -2047,7 +2047,7 @@ function scheduleAutoEnterPano360OnFirstLoad() {
               firstLoadDollhouseGuideArrowTimer = null;
               if (token !== firstLoadPano360GuideToken) return;
               if ((mode !== "pano" && mode !== "pano360") || state.index !== 0) {
-                hideFirstLoadPano360Guide({ invalidate: false });
+                hideFirstLoadPano360Guide();
                 return;
               }
 
@@ -2056,7 +2056,7 @@ function scheduleAutoEnterPano360OnFirstLoad() {
               firstLoadDollhouseGuideHideTimer = setTimeout(() => {
                 firstLoadDollhouseGuideHideTimer = null;
                 if (token !== firstLoadPano360GuideToken) return;
-                hideFirstLoadPano360Guide({ invalidate: false });
+                hideFirstLoadPano360Guide();
               }, FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS);
             }, FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS);
           }, FIRST_LOAD_DOLLHOUSE_HINT_SHOW_AFTER_360_HIDE_DELAY_MS);
