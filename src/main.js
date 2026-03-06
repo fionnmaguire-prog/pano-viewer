@@ -1897,7 +1897,8 @@ function layoutFirstLoadPano360Guide() {
 
   const dx = endX - startX;
   const dy = endY - startY;
-  const length = Math.max(18, Math.hypot(dx, dy));
+  const baseLength = Math.max(18, Math.hypot(dx, dy));
+  const length = Math.max(18, baseLength * 2);
   const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
 
   pano360AutoHintArrow.style.left = `${startX}px`;
