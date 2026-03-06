@@ -1900,9 +1900,12 @@ function layoutFirstLoadPano360Guide() {
   const baseLength = Math.max(18, Math.hypot(dx, dy));
   const length = Math.max(18, baseLength * 2);
   const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const startBackShift = length - baseLength;
+  const alignedStartX = startX - ux * startBackShift;
+  const alignedStartY = startY - uy * startBackShift;
 
-  pano360AutoHintArrow.style.left = `${startX}px`;
-  pano360AutoHintArrow.style.top = `${startY}px`;
+  pano360AutoHintArrow.style.left = `${alignedStartX}px`;
+  pano360AutoHintArrow.style.top = `${alignedStartY}px`;
   pano360AutoHintArrow.style.width = `${length}px`;
   pano360AutoHintArrow.style.transform = `rotate(${angleDeg}deg)`;
 }
