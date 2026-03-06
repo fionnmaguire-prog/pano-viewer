@@ -1846,6 +1846,7 @@ let firstLoadDollhouseGuideShowTimer = null;
 let firstLoadDollhouseGuideArrowTimer = null;
 let firstLoadDollhouseGuideHideTimer = null;
 let firstLoadGuideArrowTargetEl = null;
+let firstLoadGuideArrowLengthMultiplier = 2;
 
 function clearFirstLoadPano360GuideTimers() {
   if (firstLoadPano360GuideShowTimer) {
@@ -1887,11 +1888,13 @@ function hideFirstLoadPano360Guide({ invalidate = true, keepInputLock = false } 
   if (invalidate) firstLoadPano360GuideToken++;
   clearFirstLoadPano360GuideTimers();
   firstLoadGuideArrowTargetEl = null;
+  firstLoadGuideArrowLengthMultiplier = 2;
   if (pano360AutoHint) {
     pano360AutoHint.classList.remove("visible");
     pano360AutoHint.classList.remove("arrowVisible");
     pano360AutoHint.classList.remove("isDollhouseStep");
   }
+  if (pano360AutoHintText) pano360AutoHintText.style.top = "";
   if (!keepInputLock) setFirstLoadGuideInputLocked(false);
 }
 
@@ -1931,7 +1934,8 @@ function layoutFirstLoadPano360Guide() {
   const dx = endX - startX;
   const dy = endY - startY;
   const baseLength = Math.max(18, Math.hypot(dx, dy));
-  const length = Math.max(18, baseLength * 2);
+  const shaftMultiplier = Math.max(0.25, Number(firstLoadGuideArrowLengthMultiplier) || 1);
+  const length = Math.max(18, baseLength * shaftMultiplier);
   const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
   const startBackShift = length - baseLength;
   const alignedStartX = startX - ux * startBackShift;
@@ -1951,7 +1955,20 @@ function showFirstLoadPano360Guide({
   if (!pano360AutoHint || !pano360AutoHintText) return;
   pano360AutoHintText.textContent = text;
   pano360AutoHint.classList.toggle("isDollhouseStep", !!dollhouseStep);
+  firstLoadGuideArrowLengthMultiplier = dollhouseStep ? 1 : 2;
   firstLoadGuideArrowTargetEl = targetEl || pano360Switch || null;
+  if (dollhouseStep) {
+    const overlayRect = pano360AutoHint.getBoundingClientRect();
+    const refRect = (pano360Switch || pano360Control || firstLoadGuideArrowTargetEl)?.getBoundingClientRect?.();
+    if (overlayRect?.height && refRect?.height) {
+      const alignedTop = refRect.top + refRect.height * 0.5 - overlayRect.top;
+      pano360AutoHintText.style.top = `${alignedTop}px`;
+    } else {
+      pano360AutoHintText.style.top = "";
+    }
+  } else {
+    pano360AutoHintText.style.top = "";
+  }
   pano360AutoHint.classList.remove("arrowVisible");
   pano360AutoHint.classList.add("visible");
   requestAnimationFrame(() => layoutFirstLoadPano360Guide());
