@@ -810,6 +810,75 @@
         visibility: visible;
       }
 
+      #pano360AutoHint {
+        position: absolute;
+        inset: 0;
+        z-index: 26;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 220ms ease, visibility 220ms ease;
+      }
+
+      #pano360AutoHint.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      #pano360AutoHintText {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: calc(12px * var(--ui-responsive-scale)) calc(18px * var(--ui-responsive-scale));
+        border-radius: 999px;
+        border: var(--container-stroke-width) solid transparent;
+        background:
+          linear-gradient(var(--midnight-purple), var(--midnight-purple)) padding-box,
+          var(--chrome-stroke-material) border-box;
+        background-clip: padding-box, border-box;
+        box-shadow:
+          inset 0 1px 0 var(--chrome-specular-top),
+          inset 0 -1px 0 rgba(89, 102, 124, 0.56),
+          inset 1px 0 0 var(--chrome-specular-edge),
+          0 10px 18px rgba(10, 14, 24, 0.35);
+        color: rgba(255, 255, 255, 0.97);
+        font-size: calc(17px * var(--ui-responsive-scale));
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: none;
+        text-align: center;
+        white-space: nowrap;
+        max-width: calc(100vw - 36px);
+        box-sizing: border-box;
+      }
+
+      #pano360AutoHintArrow {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 120px;
+        height: 2px;
+        transform-origin: 0 50%;
+        background: linear-gradient(90deg, rgba(255,255,255,0.9), rgba(214, 222, 234, 0.96));
+        box-shadow: 0 0 8px rgba(10, 14, 24, 0.28);
+      }
+
+      #pano360AutoHintArrow::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 50%;
+        width: 10px;
+        height: 10px;
+        border-top: 2px solid rgba(255, 255, 255, 0.96);
+        border-right: 2px solid rgba(255, 255, 255, 0.96);
+        transform: translateY(-50%) rotate(45deg);
+      }
+
       /* =============================
          BEGIN TOUR OVERLAY
       ============================== */
@@ -1179,6 +1248,17 @@
           white-space: normal;
         }
 
+        #pano360AutoHintText {
+          font-size: calc(13px * var(--ui-responsive-scale));
+          padding: calc(10px * var(--ui-responsive-scale)) calc(14px * var(--ui-responsive-scale));
+          max-width: calc(100vw - 26px);
+          white-space: normal;
+        }
+
+        #pano360AutoHintArrow {
+          height: 2px;
+        }
+
         #enterHomeWrap {
           left: 50%;
           right: auto;
@@ -1289,6 +1369,11 @@
 
         <div id="dollhouseHint" aria-live="polite">
           <div id="dollhouseHintText">Click Spheres To View</div>
+        </div>
+
+        <div id="pano360AutoHint" aria-live="polite">
+          <div id="pano360AutoHintText">Turn 360 Camera View On and Off</div>
+          <div id="pano360AutoHintArrow" aria-hidden="true"></div>
         </div>
 
         <div id="startOverlay" aria-label="Begin tour overlay">
