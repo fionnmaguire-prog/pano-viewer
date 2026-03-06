@@ -1818,7 +1818,33 @@ function setPano360SwitchState(enabled) {
   pano360Switch.setAttribute("aria-checked", pano360SwitchEnabled ? "true" : "false");
 }
 
-async function enterPano360Mode() {
+let hasAutoEnteredPano360OnFirstLoad = false;
+const FIRST_LOAD_AUTO_PANO360_DELAY_MS = 180;
+
+function scheduleAutoEnterPano360OnFirstLoad() {
+  if (hasAutoEnteredPano360OnFirstLoad) return;
+  if (!isPano360Enabled()) return;
+  if (mode !== "pano" || state.index !== 0) return;
+
+  hasAutoEnteredPano360OnFirstLoad = true;
+  const epochAtSchedule = __uiEpoch;
+
+  setTimeout(async () => {
+    if (epochAtSchedule !== __uiEpoch) return;
+    if (mode !== "pano" || state.index !== 0) return;
+    if (!isPano360Enabled()) return;
+
+    try {
+      setPano360SwitchState(true);
+      await enterPano360Mode({ useBlurSwap: true });
+    } catch (e) {
+      console.warn("Auto-enter 360 mode on first load failed:", e);
+      setPano360SwitchState(false);
+    }
+  }, FIRST_LOAD_AUTO_PANO360_DELAY_MS);
+}
+
+async function enterPano360Mode({ useBlurSwap = false } = {}) {
   if (!isPano360Enabled()) return;
   if (mode === "pano360") return;
   const fromMode = mode;
@@ -1828,12 +1854,27 @@ async function enterPano360Mode() {
   cancelPano360Blur();
 
   setMode("pano360");
-  blankPanoSphere();
   const tex = await ensurePano360Loaded(state.index);
   if (!tex) throw new Error(`Missing 360 image for node index ${state.index}`);
-  setSphereMap(tex);
-  applyModeLookWithDelta("pano360", state.index, carryDelta);
-  requestAnimationFrame(() => fadeInPano(220));
+
+  if (useBlurSwap && fromMode === "pano") {
+    const swapped = await playPano360BlurSwap(tex, {
+      onMidpoint: () => {
+        applyModeLookWithDelta("pano360", state.index, carryDelta);
+      },
+    });
+    if (!swapped) {
+      setSphereMap(tex);
+      applyModeLookWithDelta("pano360", state.index, carryDelta);
+      requestAnimationFrame(() => fadeInPano(220));
+    }
+  } else {
+    blankPanoSphere();
+    setSphereMap(tex);
+    applyModeLookWithDelta("pano360", state.index, carryDelta);
+    requestAnimationFrame(() => fadeInPano(220));
+  }
+
   preloadNearby360(state.index);
   revealPanoUIWhenReady();
 }
@@ -6008,6 +6049,8 @@ async function init() {
           if (typeof emitListingNodeChange === "function") {
             emitListingNodeChange(state.index, "first_pano_visible");
           }
+
+          scheduleAutoEnterPano360OnFirstLoad();
         }, FIRST_PANO_UI_REVEAL_DELAY_MS);
 
         preloadPromise.then(() => console.log("✅ background preload complete"));
