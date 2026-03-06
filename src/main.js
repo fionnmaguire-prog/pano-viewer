@@ -28,6 +28,7 @@ const dollhouseHint = document.getElementById("dollhouseHint");
 const pano360AutoHint = document.getElementById("pano360AutoHint");
 const pano360AutoHintText = document.getElementById("pano360AutoHintText");
 const pano360AutoHintArrow = document.getElementById("pano360AutoHintArrow");
+const startupGuideInputBlocker = document.getElementById("startupGuideInputBlocker");
 const tabsEl = document.getElementById("tabs");
 // Brand link UI
 const brandLink = document.getElementById("brandLink");
@@ -1831,11 +1832,20 @@ const FIRST_LOAD_360_HINT_SHOW_DELAY_MS = 1000;
 const FIRST_LOAD_360_ARROW_SHOW_DELAY_MS = 2000;
 const FIRST_LOAD_360_SWITCH_AFTER_ARROW_DELAY_MS = 2000;
 const FIRST_LOAD_360_HINT_HIDE_AFTER_SWITCH_DELAY_MS = 2000;
+const FIRST_LOAD_DOLLHOUSE_HINT_SHOW_AFTER_360_HIDE_DELAY_MS = 1000;
+const FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS = 2000;
+const FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS = 4000;
+const FIRST_LOAD_360_HINT_TEXT = "Turn 360 Camera View On and Off";
+const FIRST_LOAD_DOLLHOUSE_HINT_TEXT = "Click for Dollhouse View";
 let firstLoadPano360GuideToken = 0;
 let firstLoadPano360GuideShowTimer = null;
 let firstLoadPano360GuideArrowTimer = null;
 let firstLoadPano360GuideSwitchTimer = null;
 let firstLoadPano360GuideHideTimer = null;
+let firstLoadDollhouseGuideShowTimer = null;
+let firstLoadDollhouseGuideArrowTimer = null;
+let firstLoadDollhouseGuideHideTimer = null;
+let firstLoadGuideArrowTargetEl = null;
 
 function clearFirstLoadPano360GuideTimers() {
   if (firstLoadPano360GuideShowTimer) {
@@ -1854,30 +1864,53 @@ function clearFirstLoadPano360GuideTimers() {
     clearTimeout(firstLoadPano360GuideHideTimer);
     firstLoadPano360GuideHideTimer = null;
   }
+  if (firstLoadDollhouseGuideShowTimer) {
+    clearTimeout(firstLoadDollhouseGuideShowTimer);
+    firstLoadDollhouseGuideShowTimer = null;
+  }
+  if (firstLoadDollhouseGuideArrowTimer) {
+    clearTimeout(firstLoadDollhouseGuideArrowTimer);
+    firstLoadDollhouseGuideArrowTimer = null;
+  }
+  if (firstLoadDollhouseGuideHideTimer) {
+    clearTimeout(firstLoadDollhouseGuideHideTimer);
+    firstLoadDollhouseGuideHideTimer = null;
+  }
 }
 
-function hideFirstLoadPano360Guide({ invalidate = true } = {}) {
+function setFirstLoadGuideInputLocked(locked) {
+  if (!startupGuideInputBlocker) return;
+  startupGuideInputBlocker.classList.toggle("active", !!locked);
+}
+
+function hideFirstLoadPano360Guide({ invalidate = true, keepInputLock = false } = {}) {
   if (invalidate) firstLoadPano360GuideToken++;
   clearFirstLoadPano360GuideTimers();
-  if (!pano360AutoHint) return;
-  pano360AutoHint.classList.remove("visible");
-  pano360AutoHint.classList.remove("arrowVisible");
+  firstLoadGuideArrowTargetEl = null;
+  if (pano360AutoHint) {
+    pano360AutoHint.classList.remove("visible");
+    pano360AutoHint.classList.remove("arrowVisible");
+    pano360AutoHint.classList.remove("isDollhouseStep");
+  }
+  if (!keepInputLock) setFirstLoadGuideInputLocked(false);
 }
 
 function layoutFirstLoadPano360Guide() {
-  if (!pano360AutoHint || !pano360AutoHintArrow || !pano360AutoHintText || !pano360Switch) return;
+  if (!pano360AutoHint || !pano360AutoHintArrow || !pano360AutoHintText) return;
   if (!pano360AutoHint.classList.contains("visible")) return;
+  const targetEl = firstLoadGuideArrowTargetEl || pano360Switch;
+  if (!targetEl) return;
 
   const overlayRect = pano360AutoHint.getBoundingClientRect();
   const textRect = pano360AutoHintText.getBoundingClientRect();
-  const switchRect = pano360Switch.getBoundingClientRect();
+  const targetRect = targetEl.getBoundingClientRect();
 
-  if (!overlayRect.width || !overlayRect.height || !textRect.width || !switchRect.width) return;
+  if (!overlayRect.width || !overlayRect.height || !textRect.width || !targetRect.width) return;
 
   const textCenterX = textRect.left + textRect.width * 0.5 - overlayRect.left;
   const textCenterY = textRect.top + textRect.height * 0.5 - overlayRect.top;
-  const targetX = switchRect.left + switchRect.width * 0.5 - overlayRect.left;
-  const targetY = switchRect.top + switchRect.height * 0.5 - overlayRect.top;
+  const targetX = targetRect.left + targetRect.width * 0.5 - overlayRect.left;
+  const targetY = targetRect.top + targetRect.height * 0.5 - overlayRect.top;
 
   const dirX = targetX - textCenterX;
   const dirY = targetY - textCenterY;
@@ -1888,7 +1921,7 @@ function layoutFirstLoadPano360Guide() {
   const uy = dirY / fullDist;
   const textHalfDiag = Math.hypot(textRect.width * 0.5, textRect.height * 0.5);
   const startInset = textHalfDiag + 10;
-  const endInset = Math.max(10, switchRect.height * 0.18);
+  const endInset = Math.max(10, targetRect.height * 0.18);
 
   const startX = textCenterX + ux * startInset;
   const startY = textCenterY + uy * startInset;
@@ -1910,15 +1943,23 @@ function layoutFirstLoadPano360Guide() {
   pano360AutoHintArrow.style.transform = `rotate(${angleDeg}deg)`;
 }
 
-function showFirstLoadPano360Guide() {
-  if (!pano360AutoHint) return;
+function showFirstLoadPano360Guide({
+  text = FIRST_LOAD_360_HINT_TEXT,
+  targetEl = null,
+  dollhouseStep = false,
+} = {}) {
+  if (!pano360AutoHint || !pano360AutoHintText) return;
+  pano360AutoHintText.textContent = text;
+  pano360AutoHint.classList.toggle("isDollhouseStep", !!dollhouseStep);
+  firstLoadGuideArrowTargetEl = targetEl || pano360Switch || null;
   pano360AutoHint.classList.remove("arrowVisible");
   pano360AutoHint.classList.add("visible");
   requestAnimationFrame(() => layoutFirstLoadPano360Guide());
 }
 
-function showFirstLoadPano360GuideArrow() {
+function showFirstLoadPano360GuideArrow(targetEl = null) {
   if (!pano360AutoHint) return;
+  if (targetEl) firstLoadGuideArrowTargetEl = targetEl;
   pano360AutoHint.classList.add("arrowVisible");
   requestAnimationFrame(() => layoutFirstLoadPano360Guide());
 }
@@ -1931,13 +1972,18 @@ function scheduleAutoEnterPano360OnFirstLoad() {
   hasAutoEnteredPano360OnFirstLoad = true;
   const token = ++firstLoadPano360GuideToken;
   clearFirstLoadPano360GuideTimers();
+  setFirstLoadGuideInputLocked(true);
 
   firstLoadPano360GuideShowTimer = setTimeout(() => {
     firstLoadPano360GuideShowTimer = null;
     if (token !== firstLoadPano360GuideToken) return;
     if (mode !== "pano" || state.index !== 0) return;
 
-    showFirstLoadPano360Guide();
+    showFirstLoadPano360Guide({
+      text: FIRST_LOAD_360_HINT_TEXT,
+      targetEl: pano360Switch,
+      dollhouseStep: false,
+    });
 
     firstLoadPano360GuideArrowTimer = setTimeout(() => {
       firstLoadPano360GuideArrowTimer = null;
@@ -1945,7 +1991,7 @@ function scheduleAutoEnterPano360OnFirstLoad() {
       if (mode !== "pano" || state.index !== 0) return;
       if (!isPano360Available()) return;
 
-      showFirstLoadPano360GuideArrow();
+      showFirstLoadPano360GuideArrow(pano360Switch);
 
       firstLoadPano360GuideSwitchTimer = setTimeout(async () => {
         firstLoadPano360GuideSwitchTimer = null;
@@ -1965,7 +2011,39 @@ function scheduleAutoEnterPano360OnFirstLoad() {
         firstLoadPano360GuideHideTimer = setTimeout(() => {
           firstLoadPano360GuideHideTimer = null;
           if (token !== firstLoadPano360GuideToken) return;
-          hideFirstLoadPano360Guide({ invalidate: false });
+          hideFirstLoadPano360Guide({ invalidate: false, keepInputLock: true });
+
+          firstLoadDollhouseGuideShowTimer = setTimeout(() => {
+            firstLoadDollhouseGuideShowTimer = null;
+            if (token !== firstLoadPano360GuideToken) return;
+            if ((mode !== "pano" && mode !== "pano360") || state.index !== 0) {
+              hideFirstLoadPano360Guide({ invalidate: false });
+              return;
+            }
+
+            showFirstLoadPano360Guide({
+              text: FIRST_LOAD_DOLLHOUSE_HINT_TEXT,
+              targetEl: tabDollhouse,
+              dollhouseStep: true,
+            });
+
+            firstLoadDollhouseGuideArrowTimer = setTimeout(() => {
+              firstLoadDollhouseGuideArrowTimer = null;
+              if (token !== firstLoadPano360GuideToken) return;
+              if ((mode !== "pano" && mode !== "pano360") || state.index !== 0) {
+                hideFirstLoadPano360Guide({ invalidate: false });
+                return;
+              }
+
+              showFirstLoadPano360GuideArrow(tabDollhouse);
+
+              firstLoadDollhouseGuideHideTimer = setTimeout(() => {
+                firstLoadDollhouseGuideHideTimer = null;
+                if (token !== firstLoadPano360GuideToken) return;
+                hideFirstLoadPano360Guide({ invalidate: false });
+              }, FIRST_LOAD_DOLLHOUSE_HINT_HIDE_AFTER_ARROW_DELAY_MS);
+            }, FIRST_LOAD_DOLLHOUSE_ARROW_SHOW_DELAY_MS);
+          }, FIRST_LOAD_DOLLHOUSE_HINT_SHOW_AFTER_360_HIDE_DELAY_MS);
         }, FIRST_LOAD_360_HINT_HIDE_AFTER_SWITCH_DELAY_MS);
       }, FIRST_LOAD_360_SWITCH_AFTER_ARROW_DELAY_MS);
     }, FIRST_LOAD_360_ARROW_SHOW_DELAY_MS);

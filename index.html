@@ -907,6 +907,27 @@
         z-index: 2;
       }
 
+      #pano360AutoHint.isDollhouseStep #pano360AutoHintText {
+        top: 42%;
+        padding: calc(9px * var(--ui-responsive-scale)) calc(14px * var(--ui-responsive-scale));
+        font-size: calc(27px * var(--ui-responsive-scale));
+      }
+
+      #startupGuideInputBlocker {
+        position: absolute;
+        inset: 0;
+        z-index: 25;
+        display: none;
+        pointer-events: none;
+        touch-action: none;
+        background: transparent;
+      }
+
+      #startupGuideInputBlocker.active {
+        display: block;
+        pointer-events: auto;
+      }
+
       /* =============================
          BEGIN TOUR OVERLAY
       ============================== */
@@ -1403,6 +1424,7 @@
           <div id="pano360AutoHintText">Turn 360 Camera View On and Off</div>
           <div id="pano360AutoHintArrow" aria-hidden="true"></div>
         </div>
+        <div id="startupGuideInputBlocker" aria-hidden="true"></div>
 
         <div id="startOverlay" aria-label="Begin tour overlay">
           <div id="startCard">
